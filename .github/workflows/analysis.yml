@@ -2,7 +2,7 @@ name: Electricity Market Analysis
 
 on:
   schedule:
-    - cron: "0 7 * * *"  # Daily at 7 AM UTC
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 jobs:
@@ -40,11 +40,11 @@ jobs:
           echo "Running build_analysis.py..."
           python analysis/build_analysis.py
           echo "✓ build_analysis.py completed"
-          
+
           echo "Running build_selector_data.py..."
           python analysis/build_selector_data.py
           echo "✓ build_selector_data.py completed"
-          
+
           echo "Running build_bess_dashboard_data.py..."
           python analysis/build_bess_dashboard_data.py
           echo "✓ build_bess_dashboard_data.py completed"
@@ -52,17 +52,27 @@ jobs:
       - name: Validate generated files
         run: |
           echo "Validating generated files..."
-          
-          # Check contract_profits.json
+
           if [ -f docs/data/contract_profits.json ]; then
             echo "✓ contract_profits.json exists"
-            python -c "import json; json.load(open('docs/data/contract_profits.json'))" && echo "✓ contract_profits.json is valid JSON"
+            python - <<'PY'
+import json
+from pathlib import Path
+
+path = Path("docs/data/contract_profits.json")
+data = json.loads(path.read_text())
+print(f"✓ contract_profits.json is valid JSON")
+print(f"✓ contract_profits.json row count: {len(data)}")
+
+if len(data) > 0:
+    sample = data[0]
+    print("✓ sample keys:", sorted(sample.keys()))
+PY
           else
             echo "✗ contract_profits.json not found"
             exit 1
           fi
-          
-          # Check selector_options.json
+
           if [ -f docs/data/selector_options.json ]; then
             echo "✓ selector_options.json exists"
             python -c "import json; json.load(open('docs/data/selector_options.json'))" && echo "✓ selector_options.json is valid JSON"
@@ -70,8 +80,7 @@ jobs:
             echo "✗ selector_options.json not found"
             exit 1
           fi
-          
-          # Check BESS files
+
           for file in bess_summary.json bess_trades.json bess_schedule.json; do
             if [ -f "docs/data/$file" ]; then
               echo "✓ $file exists"
@@ -81,15 +90,14 @@ jobs:
               exit 1
             fi
           done
-          
+
           echo "✓ All files validated successfully"
 
       - name: Commit generated outputs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # Check if there are changes to commit
+
           if git diff --quiet docs/data/ build/; then
             echo "No changes to commit"
           else
