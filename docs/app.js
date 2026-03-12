@@ -244,17 +244,20 @@ function renderMetricCards(filtered) {
   document.getElementById("avgProfit").innerText = `${avg.toFixed(2)} €/MWh`;
   document.getElementById("winRate").innerText = `${winRate.toFixed(1)}%`;
 
-  const bestEl = document.getElementById("bestContract");
-  const worstEl = document.getElementById("worstContract");
+const bestEl = document.getElementById("bestContract");
+const worstEl = document.getElementById("worstContract");
 
+if (bestEl) {
   if (best) {
-    bestEl.innerHTML = `<span class="positive-text">${best.date}<br>${best.contract}<br>${Number(best.profit).toFixed(2)} €/MWh</span>`;
+    bestEl.innerHTML = `${best.date}<br>${best.contract}<br>${Number(best.profit).toFixed(2)} €/MWh`;
   } else {
     bestEl.innerText = "-";
   }
+}
 
+if (worstEl) {
   if (worst) {
-    worstEl.innerHTML = `<span class="negative-text">${worst.date}<br>${worst.contract}<br>${Number(worst.profit).toFixed(2)} €/MWh</span>`;
+    worstEl.innerHTML = `${worst.date}<br>${worst.contract}<br>${Number(worst.profit).toFixed(2)} €/MWh`;
   } else {
     worstEl.innerText = "-";
   }
