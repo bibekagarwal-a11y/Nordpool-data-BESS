@@ -33,63 +33,53 @@ jobs:
           mkdir -p docs/data
           mkdir -p build/charts
           mkdir -p build/reports
-          echo "✓ Output directories created"
+          echo "Output directories created"
 
       - name: Run analysis scripts
         run: |
           echo "Running build_analysis.py..."
           python analysis/build_analysis.py
-          echo "✓ build_analysis.py completed"
+          echo "build_analysis.py completed"
 
           echo "Running build_selector_data.py..."
           python analysis/build_selector_data.py
-          echo "✓ build_selector_data.py completed"
+          echo "build_selector_data.py completed"
 
           echo "Running build_bess_dashboard_data.py..."
           python analysis/build_bess_dashboard_data.py
-          echo "✓ build_bess_dashboard_data.py completed"
+          echo "build_bess_dashboard_data.py completed"
 
       - name: Validate generated files
         run: |
           echo "Validating generated files..."
 
           if [ -f docs/data/contract_profits.json ]; then
-            echo "✓ contract_profits.json exists"
-            python - <<'PY'
-import json
-from pathlib import Path
-
-path = Path("docs/data/contract_profits.json")
-data = json.loads(path.read_text())
-print(f"✓ contract_profits.json is valid JSON")
-print(f"✓ contract_profits.json row count: {len(data)}")
-if len(data) > 0:
-    print("✓ sample keys:", sorted(data[0].keys()))
-PY
+            echo "contract_profits.json exists"
+            python -c "import json; data=json.load(open('docs/data/contract_profits.json')); print('contract_profits.json is valid JSON'); print('row count:', len(data))"
           else
-            echo "✗ contract_profits.json not found"
+            echo "contract_profits.json not found"
             exit 1
           fi
 
           if [ -f docs/data/selector_options.json ]; then
-            echo "✓ selector_options.json exists"
-            python -c "import json; json.load(open('docs/data/selector_options.json'))" && echo "✓ selector_options.json is valid JSON"
+            echo "selector_options.json exists"
+            python -c "import json; json.load(open('docs/data/selector_options.json')); print('selector_options.json is valid JSON')"
           else
-            echo "✗ selector_options.json not found"
+            echo "selector_options.json not found"
             exit 1
           fi
 
           for file in bess_summary.json bess_trades.json bess_schedule.json; do
             if [ -f "docs/data/$file" ]; then
-              echo "✓ $file exists"
-              python -c "import json; json.load(open('docs/data/$file'))" && echo "✓ $file is valid JSON"
+              echo "$file exists"
+              python -c "import json; json.load(open('docs/data/$file')); print('$file is valid JSON')"
             else
-              echo "✗ $file not found"
+              echo "$file not found"
               exit 1
             fi
           done
 
-          echo "✓ All files validated successfully"
+          echo "All files validated successfully"
 
       - name: Commit generated outputs
         run: |
@@ -103,11 +93,11 @@ PY
             git add docs/data/ build/
             git commit -m "Update analysis outputs [skip ci]"
             git push
-            echo "✓ Changes committed and pushed"
+            echo "Changes committed and pushed"
           fi
 
       - name: Workflow completed successfully
         run: |
-          echo "✓ Electricity Market Analysis workflow completed successfully"
-          echo "✓ All data files generated and validated"
-          echo "✓ Dashboard is ready for viewing"
+          echo "Electricity Market Analysis workflow completed successfully"
+          echo "All data files generated and validated"
+          echo "Dashboard is ready for viewing"
