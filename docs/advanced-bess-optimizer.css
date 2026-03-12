@@ -1,54 +1,55 @@
 .optimizer-placeholder {
-  padding: 18px;
+  padding: 14px;
   border: 1px dashed #cbd5e1;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f8fafc;
   color: #475467;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .optimizer-grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .optimizer-grid-3 {
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
 }
 
 .optimizer-checkbox-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 10px;
 }
 
 .optimizer-check {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border: 1px solid #d0d5dd;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f8fafc;
   color: #101828;
   font-weight: 600;
+  min-height: 48px;
 }
 
 .optimizer-check input {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
 .optimizer-actions {
-  margin-top: 18px;
+  margin-top: 14px;
   display: flex;
   justify-content: flex-start;
 }
 
 .optimizer-primary-btn {
   border: 1px solid #2563eb;
-  border-radius: 12px;
-  padding: 11px 18px;
+  border-radius: 10px;
+  padding: 10px 16px;
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
@@ -63,12 +64,16 @@
 }
 
 .optimizer-result-card {
-  padding: 18px;
+  padding: 16px;
   border: 1px solid #dbeafe;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #eff6ff;
   color: #0f172a;
-  line-height: 1.6;
+  line-height: 1.55;
+}
+
+.optimizer-result-card strong {
+  color: #0f172a;
 }
 
 .optimizer-result-title {
@@ -84,7 +89,68 @@
   margin-top: 10px;
 }
 
-@media (max-width: 1000px) {
+/* Compact panels only on optimizer page */
+.dashboard .panel {
+  padding: 16px 18px;
+}
+
+.dashboard .panel-header {
+  margin-bottom: 12px;
+}
+
+.dashboard .panel-header h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+
+.dashboard .panel-header p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.dashboard .filter {
+  gap: 4px;
+}
+
+.dashboard .filter label {
+  font-size: 12px;
+}
+
+.dashboard .filter input,
+.dashboard .filter select {
+  padding: 8px 12px;
+  min-height: 40px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+/* Backtest scope row should be compact and single-line on desktop */
+#optimizerArea,
+#strategyMode,
+#startDate,
+#endDate {
+  width: 100%;
+}
+
+/* Charts on optimizer page */
+#optimizerDailyPnL,
+#optimizerCumulativePnL,
+#optimizerSocTrace {
+  min-height: 340px;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .optimizer-grid-3 {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+
+  .optimizer-checkbox-grid {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
   .optimizer-grid-3,
   .optimizer-checkbox-grid,
   .optimizer-result-grid {
@@ -99,7 +165,13 @@
     grid-template-columns: 1fr;
   }
 
-  .optimizer-result-card strong {
-  color: #0f172a;
-}
+  .dashboard .panel {
+    padding: 14px;
+  }
+
+  #optimizerDailyPnL,
+  #optimizerCumulativePnL,
+  #optimizerSocTrace {
+    min-height: 280px;
+  }
 }
