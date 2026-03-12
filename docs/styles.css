@@ -211,7 +211,6 @@ body {
   margin-top: 16px;
 }
 
-/* KPI cards */
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -306,7 +305,6 @@ body {
   line-height: 1.45;
 }
 
-/* Charts */
 .charts-section {
   display: grid;
   grid-template-columns: 1fr;
@@ -328,7 +326,6 @@ body {
   min-height: 620px;
 }
 
-/* Tables */
 .tables-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -381,7 +378,6 @@ tbody tr:hover {
   background: #f8fafc;
 }
 
-/* Breakdown */
 .breakdown-details {
   width: 100%;
 }
@@ -412,7 +408,6 @@ tbody tr:hover {
   margin-top: 16px;
 }
 
-/* Utility */
 .positive-text {
   color: #15803d;
 }
@@ -421,7 +416,6 @@ tbody tr:hover {
   color: #b42318;
 }
 
-/* Responsive */
 @media (max-width: 1200px) {
   .cards-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
