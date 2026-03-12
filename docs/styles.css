@@ -47,7 +47,6 @@ body {
 }
 
 
-
 .hero {
   max-width: 1280px;
   margin: 0 auto 26px;
@@ -58,6 +57,7 @@ body {
   align-items: flex-start;
   color: white;
 }
+
 
 .hero h1 {
   margin: 0;
