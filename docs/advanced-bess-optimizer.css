@@ -191,4 +191,29 @@
     grid-template-columns: 1fr;
   }
 }
+  .optimizer-battery-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+@media (max-width: 1100px) {
+  .optimizer-battery-grid {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .optimizer-battery-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard .filter input,
+.dashboard .filter select {
+  padding: 8px 10px;
+  min-height: 38px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+}
 }
