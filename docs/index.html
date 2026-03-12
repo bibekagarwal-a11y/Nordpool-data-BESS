@@ -12,7 +12,7 @@
     <div>
       <h1>Nordpool Market Analysis</h1>
       <p class="hero-sub">
-        Analyze Day-Ahead vs Intraday arbitrage by area, strategy, date range, and quarter-hour contracts.
+        Analyze Day-Ahead vs Intraday arbitrage by area, strategy, date type, date range, and quarter-hour contracts.
       </p>
     </div>
   </header>
@@ -42,6 +42,14 @@
               <select id="direction">
                 <option value="forward">Buy first → Sell second</option>
                 <option value="reverse">Buy second → Sell first</option>
+              </select>
+            </div>
+
+            <div class="filter">
+              <label for="dateMode">Date type</label>
+              <select id="dateMode">
+                <option value="market">Market date</option>
+                <option value="run">Scheduler run date</option>
               </select>
             </div>
 
