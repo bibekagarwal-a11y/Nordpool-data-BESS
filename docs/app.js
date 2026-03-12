@@ -524,8 +524,21 @@ function renderCumulativeCurve(filtered) {
     return next;
   }, 0);
 
-  const tickVals = labels.filter((_, i) => i % 2 === 0);
-  const tickText = tickVals;
+  const tickVals = [];
+  const tickText = [];
+
+  labels.forEach((label, i) => {
+    if (i % 4 === 0) {
+      const parts = label.split(" | ");
+      if (parts.length === 2) {
+        tickVals.push(label);
+        tickText.push(`${parts[0].slice(5)}<br>${parts[1]}`);
+      } else {
+        tickVals.push(label);
+        tickText.push(label);
+      }
+    }
+  });
 
   Plotly.newPlot(
     "cumulativeCurve",
@@ -535,21 +548,24 @@ function renderCumulativeCurve(filtered) {
         y: cumulative,
         mode: "lines+markers",
         line: { color: "#16a34a", width: 3 },
-        marker: { size: 6 },
+        marker: { size: 5 },
         hovertemplate: "%{x}<br>Cumulative: %{y:.2f} €/MWh<extra></extra>"
       }
     ],
     {
-      margin: { l: 70, r: 20, t: 20, b: 150 },
+      margin: { l: 70, r: 20, t: 20, b: 140 },
       paper_bgcolor: "white",
       plot_bgcolor: "white",
       xaxis: {
         title: "Date | Contract",
-        tickangle: -55,
+        type: "category",
+        categoryorder: "array",
+        categoryarray: labels,
         tickmode: "array",
         tickvals: tickVals,
         ticktext: tickText,
-        gridcolor: "#eaecf0",
+        tickangle: 0,
+        showgrid: false,
         automargin: true
       },
       yaxis: {
@@ -564,7 +580,6 @@ function renderCumulativeCurve(filtered) {
     }
   );
 }
-
 
 function renderHeatmap(filtered) {
   if (typeof Plotly === "undefined") return;
