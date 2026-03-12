@@ -73,9 +73,6 @@ function buildDatasetSummary() {
   const rules = unique(optimizerData.map(x => x.rule)).filter(Boolean).sort();
   const dates = unique(optimizerData.map(x => x.date)).filter(Boolean).sort();
 
-  const minDate = dates[0] || "-";
-  const maxDate = dates[dates.length - 1] || "-";
-
   return `
     <div class="optimizer-result-card">
       <div class="optimizer-result-title">Loaded historical dataset</div>
@@ -83,7 +80,7 @@ function buildDatasetSummary() {
         <div><strong>Rows:</strong> ${optimizerData.length}</div>
         <div><strong>Areas:</strong> ${areas.join(", ") || "-"}</div>
         <div><strong>Historical market pairs:</strong> ${rules.length}</div>
-        <div><strong>Date range:</strong> ${minDate} → ${maxDate}</div>
+        <div><strong>Date range:</strong> ${dates[0] || "-"} → ${dates[dates.length - 1] || "-"}</div>
       </div>
     </div>
   `;
@@ -158,11 +155,7 @@ function getScopedRows(inputs) {
 
 function getEligibleRules(rows, selectedMarkets) {
   const allRules = unique(rows.map(r => r.rule)).filter(Boolean);
-
-  return allRules.filter(rule => {
-    const parts = rule.split("_");
-    return parts.every(p => selectedMarkets.includes(p));
-  });
+  return allRules.filter(rule => rule.split("_").every(p => selectedMarkets.includes(p)));
 }
 
 function percentile(values, q) {
@@ -205,9 +198,7 @@ function buildCandidateStrategies(mode) {
 
   buyThresholds.forEach(bq => {
     sellThresholds.forEach(sq => {
-      if (sq > bq) {
-        candidates.push({ mode, buyQ: bq, sellQ: sq });
-      }
+      if (sq > bq) candidates.push({ mode, buyQ: bq, sellQ: sq });
     });
   });
 
@@ -259,7 +250,6 @@ function runSingleBacktest(rows, inputs, candidate, rule) {
 
     const buyPrice = Number(row.buy_price);
     const sellPrice = Number(row.sell_price);
-
     if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice)) return;
 
     let action = "idle";
@@ -352,9 +342,7 @@ function runOptimizerBacktest(scopedRows, inputs) {
 
     candidates.forEach(candidate => {
       const result = runSingleBacktest(ruleRows, inputs, candidate, rule);
-      if (result) {
-        allResults.push(result);
-      }
+      if (result) allResults.push(result);
     });
   });
 
@@ -363,11 +351,7 @@ function runOptimizerBacktest(scopedRows, inputs) {
   }
 
   allResults.sort((a, b) => b.totalPnL - a.totalPnL);
-  return {
-    best: allResults[0],
-    allResults,
-    eligibleRules
-  };
+  return { best: allResults[0], allResults, eligibleRules };
 }
 
 function formatMode(mode) {
@@ -378,11 +362,7 @@ function formatMode(mode) {
 }
 
 function renderActionTable(actions) {
-  if (!actions.length) {
-    return "<div>No charge/discharge actions were triggered by the selected strategy.</div>";
-  }
-
-  const topActions = actions.slice(0, 20);
+  if (!actions.length) return "<div>No charge/discharge actions were triggered by the selected strategy.</div>";
 
   return `
     <table>
@@ -399,7 +379,7 @@ function renderActionTable(actions) {
         </tr>
       </thead>
       <tbody>
-        ${topActions.map(a => `
+        ${actions.slice(0, 20).map(a => `
           <tr>
             <td>${a.date}</td>
             <td>${a.contract}</td>
@@ -419,8 +399,6 @@ function renderActionTable(actions) {
 function renderTopAlternatives(allResults) {
   if (!allResults.length) return "<div>No alternatives found.</div>";
 
-  const top = allResults.slice(0, 5);
-
   return `
     <table>
       <thead>
@@ -434,7 +412,7 @@ function renderTopAlternatives(allResults) {
         </tr>
       </thead>
       <tbody>
-        ${top.map((r, idx) => `
+        ${allResults.slice(0, 5).map((r, idx) => `
           <tr>
             <td>${idx + 1}</td>
             <td>${RULE_LABELS[r.rule] || r.rule}</td>
@@ -449,6 +427,173 @@ function renderTopAlternatives(allResults) {
   `;
 }
 
+function summarizeDaily(bestResult) {
+  const map = new Map();
+
+  bestResult.actions.forEach(a => {
+    const key = a.date;
+    if (!map.has(key)) {
+      map.set(key, {
+        date: key,
+        pnl: 0,
+        chargeEnergy: 0,
+        dischargeEnergy: 0,
+        charges: 0,
+        discharges: 0,
+        lastSoc: a.soc_after
+      });
+    }
+
+    const row = map.get(key);
+    row.pnl += a.pnl_delta;
+    row.lastSoc = a.soc_after;
+
+    if (a.action === "charge") {
+      row.chargeEnergy += a.energy_raw_mwh;
+      row.charges += 1;
+    } else if (a.action === "discharge") {
+      row.dischargeEnergy += a.energy_raw_mwh;
+      row.discharges += 1;
+    }
+  });
+
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function renderDailySummaryTable(dailyRows) {
+  const el = byId("optimizerDailySummary");
+  if (!el) return;
+
+  if (!dailyRows.length) {
+    el.innerHTML = `<div class="optimizer-placeholder">No daily summary available.</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Daily P&amp;L</th>
+          <th>Charge Energy</th>
+          <th>Discharge Energy</th>
+          <th>Charge Actions</th>
+          <th>Discharge Actions</th>
+          <th>Ending SoC</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${dailyRows.map(r => `
+          <tr>
+            <td>${r.date}</td>
+            <td>${r.pnl.toFixed(2)}</td>
+            <td>${r.chargeEnergy.toFixed(2)}</td>
+            <td>${r.dischargeEnergy.toFixed(2)}</td>
+            <td>${r.charges}</td>
+            <td>${r.discharges}</td>
+            <td>${r.lastSoc.toFixed(2)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderOptimizerCharts(bestResult) {
+  if (typeof Plotly === "undefined") return;
+
+  const dailyRows = summarizeDaily(bestResult);
+  const dailyDates = dailyRows.map(r => r.date);
+  const dailyPnL = dailyRows.map(r => r.pnl);
+
+  const cumulative = [];
+  dailyPnL.reduce((acc, val, i) => {
+    cumulative[i] = acc + val;
+    return cumulative[i];
+  }, 0);
+
+  const stepLabels = bestResult.actions.map((a, i) => `${a.date} | ${a.contract} | ${i + 1}`);
+  const socTrace = bestResult.actions.map(a => a.soc_after);
+
+  Plotly.newPlot(
+    "optimizerDailyPnL",
+    [{
+      x: dailyDates,
+      y: dailyPnL,
+      type: "bar",
+      hovertemplate: "Date: %{x}<br>Daily P&L: %{y:.2f} €<extra></extra>"
+    }],
+    {
+      title: "Daily P&L",
+      margin: { l: 60, r: 20, t: 50, b: 90 },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white",
+      xaxis: { title: "Date", tickangle: -45, automargin: true },
+      yaxis: { title: "P&L (€)", gridcolor: "#eaecf0", automargin: true }
+    },
+    { responsive: true, displayModeBar: false }
+  );
+
+  Plotly.newPlot(
+    "optimizerCumulativePnL",
+    [{
+      x: dailyDates,
+      y: cumulative,
+      mode: "lines+markers",
+      hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} €<extra></extra>"
+    }],
+    {
+      title: "Cumulative P&L",
+      margin: { l: 60, r: 20, t: 50, b: 90 },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white",
+      xaxis: { title: "Date", tickangle: -45, automargin: true },
+      yaxis: { title: "Cumulative (€)", gridcolor: "#eaecf0", automargin: true }
+    },
+    { responsive: true, displayModeBar: false }
+  );
+
+  Plotly.newPlot(
+    "optimizerSocTrace",
+    [{
+      x: stepLabels,
+      y: socTrace,
+      mode: "lines",
+      customdata: bestResult.actions.map(a => `${a.date} | ${a.contract} | ${a.action}`),
+      hovertemplate: "%{customdata}<br>SoC: %{y:.2f} MWh<extra></extra>"
+    }],
+    {
+      title: "SoC Trace",
+      margin: { l: 60, r: 20, t: 50, b: 110 },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white",
+      xaxis: { title: "Step", showticklabels: false, automargin: true },
+      yaxis: { title: "SoC (MWh)", gridcolor: "#eaecf0", automargin: true }
+    },
+    { responsive: true, displayModeBar: false }
+  );
+
+  renderDailySummaryTable(dailyRows);
+}
+
+function clearOptimizerCharts() {
+  ["optimizerDailyPnL", "optimizerCumulativePnL", "optimizerSocTrace"].forEach(id => {
+    const el = byId(id);
+    if (!el || typeof Plotly === "undefined") return;
+    Plotly.newPlot(id, [], {
+      annotations: [{ text: "No data", showarrow: false }],
+      margin: { l: 40, r: 20, t: 40, b: 40 },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white"
+    }, { responsive: true, displayModeBar: false });
+  });
+
+  const summaryEl = byId("optimizerDailySummary");
+  if (summaryEl) {
+    summaryEl.innerHTML = `<div class="optimizer-placeholder">No daily summary yet.</div>`;
+  }
+}
+
 function renderBacktestResult(inputs, scopedRows, run) {
   const resultEl = byId("optimizerResult");
   if (!resultEl) return;
@@ -460,6 +605,7 @@ function renderBacktestResult(inputs, scopedRows, run) {
         No eligible historical market pair exists inside the selected markets and date range.
       </div>
     `;
+    clearOptimizerCharts();
     return;
   }
 
@@ -467,9 +613,9 @@ function renderBacktestResult(inputs, scopedRows, run) {
 
   const strategyNote =
     inputs.strategyMode === "charge_only"
-      ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge when buy price is in the lowest ${(best.candidate.buyQ * 100).toFixed(0)}% of the scoped history for this pair.`
+      ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge when buy price is in the lowest ${(best.candidate.buyQ * 100).toFixed(0)}% of scoped history for this pair.`
       : inputs.strategyMode === "discharge_only"
-      ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Discharge when sell price is in the highest ${(100 - best.candidate.sellQ * 100).toFixed(0)}% tail of the scoped history for this pair.`
+      ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Discharge when sell price is in the highest ${(100 - best.candidate.sellQ * 100).toFixed(0)}% tail of scoped history for this pair.`
       : `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge below ${best.buyThreshold?.toFixed(2) ?? "-"} €/MWh and discharge above ${best.sellThreshold?.toFixed(2) ?? "-"} €/MWh for the selected period.`;
 
   resultEl.innerHTML = `
@@ -495,7 +641,7 @@ function renderBacktestResult(inputs, scopedRows, run) {
 
       <div style="margin-top:16px;">
         <strong>Notes</strong><br>
-        Step 5 is now market-aware at the historical pair level. It compares all eligible rule pairs inside your selected markets and recommends the best-performing combination for the chosen period.
+        Step 6 adds daily P&amp;L, cumulative P&amp;L, SoC trace, and a daily summary table for the recommended historical market pair strategy.
       </div>
     </div>
 
@@ -509,6 +655,8 @@ function renderBacktestResult(inputs, scopedRows, run) {
       ${renderActionTable(best.activeActions)}
     </div>
   `;
+
+  renderOptimizerCharts(best);
 }
 
 function handleRunOptimizer() {
@@ -525,6 +673,7 @@ function handleRunOptimizer() {
         </div>
       `;
     }
+    clearOptimizerCharts();
     return;
   }
 
@@ -539,6 +688,7 @@ function handleRunOptimizer() {
         </div>
       `;
     }
+    clearOptimizerCharts();
     return;
   }
 
@@ -549,5 +699,6 @@ function handleRunOptimizer() {
 byId("runOptimizerBtn")?.addEventListener("click", handleRunOptimizer);
 
 loadOptimizerData();
+clearOptimizerCharts();
 
-console.log("Advanced BESS Optimizer Step 5 loaded.");
+console.log("Advanced BESS Optimizer Step 6 loaded.");
