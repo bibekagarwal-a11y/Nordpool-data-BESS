@@ -153,7 +153,6 @@ base["area"] = base["area"].astype(str).str.strip()
 base["contract"] = base["contract"].astype(str).str.strip()
 
 pairs = list(combinations(available_markets, 2))
-
 profit_rows = []
 
 for left_market, right_market in pairs:
