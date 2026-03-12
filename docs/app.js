@@ -40,7 +40,6 @@ function parseDateContractToIndex(row) {
 function compareRowsChronologically(a, b) {
   const aKey = parseDateContractToIndex(a);
   const bKey = parseDateContractToIndex(b);
-
   const dateCompare = aKey.datePart.localeCompare(bKey.datePart);
   if (dateCompare !== 0) return dateCompare;
   return aKey.contractPart - bKey.contractPart;
@@ -74,12 +73,10 @@ async function loadData() {
 function showError(message) {
   setHTML(
     "table",
-    `
-      <div style="padding:16px;border:1px solid #fda29b;background:#fff1f3;border-radius:12px;color:#b42318;">
-        <strong>Data loading error</strong><br />
-        ${message}
-      </div>
-    `
+    `<div style="padding:16px;border:1px solid #fda29b;background:#fff1f3;border-radius:12px;color:#b42318;">
+      <strong>Data loading error</strong><br />
+      ${message}
+    </div>`
   );
 }
 
@@ -96,12 +93,10 @@ function showNoDataMessage(message = "No data for selected filters.") {
   setHTML("bottomContracts", "<div>No data</div>");
   setHTML(
     "table",
-    `
-      <div style="padding:16px;border:1px solid #fda29b;background:#fff1f3;border-radius:12px;color:#b42318;">
-        <strong>No data for selected filters</strong><br />
-        ${message}
-      </div>
-    `
+    `<div style="padding:16px;border:1px solid #fda29b;background:#fff1f3;border-radius:12px;color:#b42318;">
+      <strong>No data for selected filters</strong><br />
+      ${message}
+    </div>`
   );
 
   renderEmptyPlot("cumulativeCurve");
@@ -123,17 +118,13 @@ function renderEmptyPlot(id) {
       paper_bgcolor: "white",
       plot_bgcolor: "white"
     },
-    {
-      responsive: true,
-      displayModeBar: false
-    }
+    { responsive: true, displayModeBar: false }
   );
 }
 
 function setOptions(id, values, labelMap = null) {
   const el = byId(id);
   if (!el) return;
-
   el.innerHTML = "";
 
   values.forEach(v => {
@@ -199,18 +190,11 @@ function applyContractPreset(presetName) {
     }
 
     let selected = false;
-
-    if (presetName === "base") {
-      selected = true;
-    } else if (presetName === "peak") {
-      selected = mins >= 8 * 60 && mins < 20 * 60;
-    } else if (presetName === "offpeak") {
-      selected = mins < 8 * 60 || mins >= 20 * 60;
-    } else if (presetName === "morning") {
-      selected = mins >= 6 * 60 && mins < 12 * 60;
-    } else if (presetName === "evening") {
-      selected = mins >= 17 * 60 && mins < 23 * 60;
-    }
+    if (presetName === "base") selected = true;
+    else if (presetName === "peak") selected = mins >= 8 * 60 && mins < 20 * 60;
+    else if (presetName === "offpeak") selected = mins < 8 * 60 || mins >= 20 * 60;
+    else if (presetName === "morning") selected = mins >= 6 * 60 && mins < 12 * 60;
+    else if (presetName === "evening") selected = mins >= 17 * 60 && mins < 23 * 60;
 
     opt.selected = selected;
   });
@@ -238,11 +222,8 @@ function updateDateInputs() {
     throw new Error(`No ${dateField} values found in data.`);
   }
 
-  const startDateEl = byId("startDate");
-  const endDateEl = byId("endDate");
-
-  if (startDateEl) startDateEl.value = dates[0];
-  if (endDateEl) endDateEl.value = dates[dates.length - 1];
+  if (byId("startDate")) byId("startDate").value = dates[0];
+  if (byId("endDate")) byId("endDate").value = dates[dates.length - 1];
 }
 
 function populateSelectors() {
@@ -342,15 +323,8 @@ function renderMetricCards(filtered) {
   setText("avgProfit", `${avg.toFixed(2)} €/MWh`);
   setText("winRate", `${winRate.toFixed(1)}%`);
 
-  setHTML(
-    "bestContract",
-    best ? `${best.date}<br>${best.contract}<br>${Number(best.profit).toFixed(2)} €/MWh` : "-"
-  );
-
-  setHTML(
-    "worstContract",
-    worst ? `${worst.date}<br>${worst.contract}<br>${Number(worst.profit).toFixed(2)} €/MWh` : "-"
-  );
+  setHTML("bestContract", best ? `${best.date}<br>${best.contract}<br>${Number(best.profit).toFixed(2)} €/MWh` : "-");
+  setHTML("worstContract", worst ? `${worst.date}<br>${worst.contract}<br>${Number(worst.profit).toFixed(2)} €/MWh` : "-");
 }
 
 function renderBessStrategy(filtered) {
@@ -363,7 +337,6 @@ function renderBessStrategy(filtered) {
   }
 
   const ordered = [...filtered].sort(compareRowsChronologically);
-
   let bestSpread = -Infinity;
   let bestChargeRow = null;
   let bestDischargeRow = null;
@@ -372,7 +345,6 @@ function renderBessStrategy(filtered) {
   for (const row of ordered) {
     const buyPrice = Number(row.buy_price);
     const sellPrice = Number(row.sell_price);
-
     if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice)) continue;
 
     if (!minBuySoFar || buyPrice < Number(minBuySoFar.buy_price)) {
@@ -414,7 +386,6 @@ function computeQuarterHours(contractLabel) {
   let startMins = sh * 60 + sm;
   let endMins = eh * 60 + em;
   if (endMins < startMins) endMins += 24 * 60;
-
   return (endMins - startMins) / 60;
 }
 
@@ -431,21 +402,12 @@ function renderMultiCycleBess(filtered) {
   const powerMW = Number(byId("bessPower")?.value || 1);
   const efficiency = Number(byId("bessEfficiency")?.value || 0.9);
 
-  if (
-    !Number.isFinite(capacityMWh) ||
-    !Number.isFinite(powerMW) ||
-    !Number.isFinite(efficiency) ||
-    capacityMWh <= 0 ||
-    powerMW <= 0 ||
-    efficiency <= 0 ||
-    efficiency > 1
-  ) {
+  if (!Number.isFinite(capacityMWh) || !Number.isFinite(powerMW) || !Number.isFinite(efficiency) || capacityMWh <= 0 || powerMW <= 0 || efficiency <= 0 || efficiency > 1) {
     el.innerHTML = "Invalid BESS settings.";
     return;
   }
 
   const ordered = [...filtered].sort(compareRowsChronologically);
-
   let soc = 0;
   let totalPnL = 0;
   let chargeActions = 0;
@@ -453,11 +415,7 @@ function renderMultiCycleBess(filtered) {
   let throughputMWh = 0;
 
   const avgFutureSell = ordered.map((_, i) => {
-    const future = ordered
-      .slice(i + 1)
-      .map(r => Number(r.sell_price))
-      .filter(Number.isFinite);
-
+    const future = ordered.slice(i + 1).map(r => Number(r.sell_price)).filter(Number.isFinite);
     if (!future.length) return null;
     return future.reduce((a, b) => a + b, 0) / future.length;
   });
@@ -471,20 +429,12 @@ function renderMultiCycleBess(filtered) {
     const futureAvgSell = avgFutureSell[i];
 
     const chargeThreshold = futureAvgSell !== null ? futureAvgSell * efficiency : null;
-
-    const shouldCharge =
-      futureAvgSell !== null &&
-      soc < capacityMWh &&
-      buyPrice < chargeThreshold;
-
-    const shouldDischarge =
-      soc > 0 &&
-      (futureAvgSell === null || sellPrice >= futureAvgSell || i >= ordered.length - 4);
+    const shouldCharge = futureAvgSell !== null && soc < capacityMWh && buyPrice < chargeThreshold;
+    const shouldDischarge = soc > 0 && (futureAvgSell === null || sellPrice >= futureAvgSell || i >= ordered.length - 4);
 
     if (shouldCharge) {
       const availableRoom = capacityMWh - soc;
       const chargeMWh = Math.min(maxEnergyThisStep, availableRoom);
-
       if (chargeMWh > 0) {
         soc += chargeMWh;
         totalPnL -= chargeMWh * buyPrice;
@@ -493,7 +443,6 @@ function renderMultiCycleBess(filtered) {
       }
     } else if (shouldDischarge) {
       const dischargeRawMWh = Math.min(maxEnergyThisStep, soc);
-
       if (dischargeRawMWh > 0) {
         const deliveredMWh = dischargeRawMWh * efficiency;
         soc -= dischargeRawMWh;
@@ -522,65 +471,49 @@ function renderHistogram(filtered) {
   if (typeof Plotly === "undefined") return;
   const profits = filtered.map(x => Number(x.profit));
 
-  Plotly.newPlot(
-    "histogram",
-    [
-      {
-        x: profits,
-        type: "histogram",
-        marker: { color: "#2563eb" },
-        hovertemplate: "Profit: %{x:.2f} €/MWh<br>Count: %{y}<extra></extra>"
-      }
-    ],
-    {
-      margin: { l: 60, r: 20, t: 20, b: 60 },
-      paper_bgcolor: "white",
-      plot_bgcolor: "white",
-      xaxis: { title: "Profit per row (€/MWh)", gridcolor: "#eaecf0" },
-      yaxis: { title: "Count", gridcolor: "#eaecf0" }
-    },
-    {
-      responsive: true,
-      displayModeBar: false
-    }
-  );
+  Plotly.newPlot("histogram", [{
+    x: profits,
+    type: "histogram",
+    marker: { color: "#2563eb" },
+    hovertemplate: "Profit: %{x:.2f} €/MWh<br>Count: %{y}<extra></extra>"
+  }], {
+    margin: { l: 60, r: 20, t: 20, b: 60 },
+    paper_bgcolor: "white",
+    plot_bgcolor: "white",
+    xaxis: { title: "Profit per row (€/MWh)", gridcolor: "#eaecf0" },
+    yaxis: { title: "Count", gridcolor: "#eaecf0" }
+  }, {
+    responsive: true,
+    displayModeBar: false
+  });
 }
 
 function renderContractBar(filtered) {
   if (typeof Plotly === "undefined") return;
-
   const labels = filtered.map(x => `${x.date} | ${x.contract}`);
   const profits = filtered.map(x => Number(x.profit));
   const colors = profits.map(v => (v >= 0 ? "#16a34a" : "#dc2626"));
 
-  Plotly.newPlot(
-    "contractBar",
-    [
-      {
-        x: labels,
-        y: profits,
-        type: "bar",
-        marker: { color: colors },
-        hovertemplate: "%{x}<br>Profit: %{y:.2f} €/MWh<extra></extra>"
-      }
-    ],
-    {
-      margin: { l: 60, r: 20, t: 20, b: 120 },
-      paper_bgcolor: "white",
-      plot_bgcolor: "white",
-      xaxis: { title: "Date | Contract", tickangle: -60, gridcolor: "#eaecf0" },
-      yaxis: { title: "Profit (€/MWh)", gridcolor: "#eaecf0" }
-    },
-    {
-      responsive: true,
-      displayModeBar: false
-    }
-  );
+  Plotly.newPlot("contractBar", [{
+    x: labels,
+    y: profits,
+    type: "bar",
+    marker: { color: colors },
+    hovertemplate: "%{x}<br>Profit: %{y:.2f} €/MWh<extra></extra>"
+  }], {
+    margin: { l: 60, r: 20, t: 20, b: 120 },
+    paper_bgcolor: "white",
+    plot_bgcolor: "white",
+    xaxis: { title: "Date | Contract", tickangle: -60, gridcolor: "#eaecf0" },
+    yaxis: { title: "Profit (€/MWh)", gridcolor: "#eaecf0" }
+  }, {
+    responsive: true,
+    displayModeBar: false
+  });
 }
 
 function renderCumulativeCurve(filtered) {
   if (typeof Plotly === "undefined") return;
-
   const labels = filtered.map(x => `${x.date} | ${x.contract}`);
   const profits = filtered.map(x => Number(x.profit));
 
@@ -591,35 +524,27 @@ function renderCumulativeCurve(filtered) {
     return next;
   }, 0);
 
-  Plotly.newPlot(
-    "cumulativeCurve",
-    [
-      {
-        x: labels,
-        y: cumulative,
-        mode: "lines+markers",
-        line: { color: "#16a34a", width: 3 },
-        marker: { size: 6 },
-        hovertemplate: "%{x}<br>Cumulative: %{y:.2f} €/MWh<extra></extra>"
-      }
-    ],
-    {
-      margin: { l: 60, r: 20, t: 20, b: 120 },
-      paper_bgcolor: "white",
-      plot_bgcolor: "white",
-      xaxis: { title: "Date | Contract", tickangle: -60, gridcolor: "#eaecf0" },
-      yaxis: { title: "Cumulative P&L (€/MWh)", gridcolor: "#eaecf0" }
-    },
-    {
-      responsive: true,
-      displayModeBar: false
-    }
-  );
+  Plotly.newPlot("cumulativeCurve", [{
+    x: labels,
+    y: cumulative,
+    mode: "lines+markers",
+    line: { color: "#16a34a", width: 3 },
+    marker: { size: 6 },
+    hovertemplate: "%{x}<br>Cumulative: %{y:.2f} €/MWh<extra></extra>"
+  }], {
+    margin: { l: 60, r: 20, t: 20, b: 120 },
+    paper_bgcolor: "white",
+    plot_bgcolor: "white",
+    xaxis: { title: "Date | Contract", tickangle: -60, gridcolor: "#eaecf0" },
+    yaxis: { title: "Cumulative P&L (€/MWh)", gridcolor: "#eaecf0" }
+  }, {
+    responsive: true,
+    displayModeBar: false
+  });
 }
 
 function renderHeatmap(filtered) {
   if (typeof Plotly === "undefined") return;
-
   if (!filtered.length) {
     renderEmptyPlot("heatmap");
     return;
@@ -640,31 +565,24 @@ function renderHeatmap(filtered) {
     })
   );
 
-  Plotly.newPlot(
-    "heatmap",
-    [
-      {
-        z: matrix,
-        x: dates,
-        y: contracts,
-        type: "heatmap",
-        colorscale: "RdYlGn",
-        reversescale: false,
-        hovertemplate: "Date: %{x}<br>Contract: %{y}<br>Avg Profit: %{z:.2f} €/MWh<extra></extra>"
-      }
-    ],
-    {
-      margin: { l: 90, r: 20, t: 20, b: 80 },
-      paper_bgcolor: "white",
-      plot_bgcolor: "white",
-      xaxis: { title: "Date" },
-      yaxis: { title: "Quarter-hour contract" }
-    },
-    {
-      responsive: true,
-      displayModeBar: false
-    }
-  );
+  Plotly.newPlot("heatmap", [{
+    z: matrix,
+    x: dates,
+    y: contracts,
+    type: "heatmap",
+    colorscale: "RdYlGn",
+    reversescale: false,
+    hovertemplate: "Date: %{x}<br>Contract: %{y}<br>Avg Profit: %{z:.2f} €/MWh<extra></extra>"
+  }], {
+    margin: { l: 90, r: 20, t: 20, b: 80 },
+    paper_bgcolor: "white",
+    plot_bgcolor: "white",
+    xaxis: { title: "Date" },
+    yaxis: { title: "Quarter-hour contract" }
+  }, {
+    responsive: true,
+    displayModeBar: false
+  });
 }
 
 function buildMiniTable(rows) {
@@ -682,9 +600,7 @@ function buildMiniTable(rows) {
         </tr>
       </thead>
       <tbody>
-        ${rows
-          .map(
-            d => `
+        ${rows.map(d => `
           <tr>
             <td>${d.date}</td>
             <td>${d.contract}</td>
@@ -692,9 +608,7 @@ function buildMiniTable(rows) {
             <td>${Number(d.sell_price).toFixed(2)}</td>
             <td>${Number(d.profit).toFixed(2)}</td>
           </tr>
-        `
-          )
-          .join("")}
+        `).join("")}
       </tbody>
     </table>
   `;
@@ -703,43 +617,35 @@ function buildMiniTable(rows) {
 function renderTopBottomTables(filtered) {
   const top10 = [...filtered].sort((a, b) => b.profit - a.profit).slice(0, 10);
   const bottom10 = [...filtered].sort((a, b) => a.profit - b.profit).slice(0, 10);
-
   setHTML("topContracts", buildMiniTable(top10));
   setHTML("bottomContracts", buildMiniTable(bottom10));
 }
 
 function renderBreakdownTable(filtered) {
-  setHTML(
-    "table",
-    `
-      <table>
-        <thead>
+  setHTML("table", `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Contract</th>
+          <th>Buy</th>
+          <th>Sell</th>
+          <th>Profit</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(d => `
           <tr>
-            <th>Date</th>
-            <th>Contract</th>
-            <th>Buy</th>
-            <th>Sell</th>
-            <th>Profit</th>
+            <td>${d.date}</td>
+            <td>${d.contract}</td>
+            <td>${Number(d.buy_price).toFixed(2)}</td>
+            <td>${Number(d.sell_price).toFixed(2)}</td>
+            <td>${Number(d.profit).toFixed(2)}</td>
           </tr>
-        </thead>
-        <tbody>
-          ${filtered
-            .map(
-              d => `
-            <tr>
-              <td>${d.date}</td>
-              <td>${d.contract}</td>
-              <td>${Number(d.buy_price).toFixed(2)}</td>
-              <td>${Number(d.sell_price).toFixed(2)}</td>
-              <td>${Number(d.profit).toFixed(2)}</td>
-            </tr>
-          `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    `
-  );
+        `).join("")}
+      </tbody>
+    </table>
+  `);
 }
 
 function render() {
@@ -770,7 +676,6 @@ byId("dateMode")?.addEventListener("change", () => {
 });
 byId("startDate")?.addEventListener("change", updateContracts);
 byId("endDate")?.addEventListener("change", updateContracts);
-
 byId("bessCapacity")?.addEventListener("change", render);
 byId("bessPower")?.addEventListener("change", render);
 byId("bessEfficiency")?.addEventListener("change", render);
@@ -792,24 +697,10 @@ byId("clearAllBtn")?.addEventListener("click", () => {
   render();
 });
 
-byId("presetBaseBtn")?.addEventListener("click", () => {
-  applyContractPreset("base");
-});
-
-byId("presetPeakBtn")?.addEventListener("click", () => {
-  applyContractPreset("peak");
-});
-
-byId("presetOffPeakBtn")?.addEventListener("click", () => {
-  applyContractPreset("offpeak");
-});
-
-byId("presetMorningBtn")?.addEventListener("click", () => {
-  applyContractPreset("morning");
-});
-
-byId("presetEveningBtn")?.addEventListener("click", () => {
-  applyContractPreset("evening");
-});
+byId("presetBaseBtn")?.addEventListener("click", () => applyContractPreset("base"));
+byId("presetPeakBtn")?.addEventListener("click", () => applyContractPreset("peak"));
+byId("presetOffPeakBtn")?.addEventListener("click", () => applyContractPreset("offpeak"));
+byId("presetMorningBtn")?.addEventListener("click", () => applyContractPreset("morning"));
+byId("presetEveningBtn")?.addEventListener("click", () => applyContractPreset("evening"));
 
 loadData();
