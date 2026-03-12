@@ -82,7 +82,7 @@ function buildDatasetSummary() {
       <div class="optimizer-result-grid">
         <div><strong>Rows:</strong> ${optimizerData.length}</div>
         <div><strong>Areas:</strong> ${areas.join(", ") || "-"}</div>
-        <div><strong>Reference strategies:</strong> ${rules.length}</div>
+        <div><strong>Historical market pairs:</strong> ${rules.length}</div>
         <div><strong>Date range:</strong> ${minDate} → ${maxDate}</div>
       </div>
     </div>
@@ -91,11 +91,9 @@ function buildDatasetSummary() {
 
 function populateDatasetScope() {
   const areas = unique(optimizerData.map(x => x.area)).filter(Boolean).sort();
-  const rules = unique(optimizerData.map(x => x.rule)).filter(Boolean).sort();
   const dates = unique(optimizerData.map(x => x.date)).filter(Boolean).sort();
 
   setOptions("optimizerArea", areas);
-  setOptions("optimizerRule", rules, RULE_LABELS);
 
   if (byId("startDate") && dates.length) byId("startDate").value = dates[0];
   if (byId("endDate") && dates.length) byId("endDate").value = dates[dates.length - 1];
@@ -120,7 +118,6 @@ function getOptimizerInputs() {
     maxSoc: Number(byId("bessMaxSoc")?.value || 0),
     dailyCycleLimit: Number(byId("bessDailyCycleLimit")?.value || 0),
     area: byId("optimizerArea")?.value || "",
-    referenceRule: byId("optimizerRule")?.value || "",
     strategyMode: byId("strategyMode")?.value || "charge_discharge",
     startDate: byId("startDate")?.value || "",
     endDate: byId("endDate")?.value || "",
@@ -140,15 +137,7 @@ function validateInputs(inputs) {
   if (!inputs.startDate || !inputs.endDate) return "Please select both start and end dates.";
   if (inputs.startDate > inputs.endDate) return "Start date must be before end date.";
   if (!inputs.area) return "Please select an area.";
-  if (!inputs.referenceRule) return "Please select a reference strategy.";
   if (!inputs.markets.length) return "Select at least one market.";
-
-  const ruleMarkets = inputs.referenceRule.split("_");
-  const missing = ruleMarkets.filter(m => !inputs.markets.includes(m));
-  if (missing.length) {
-    return `Selected markets must include the reference rule markets: ${ruleMarkets.join(", ")}.`;
-  }
-
   return null;
 }
 
@@ -156,7 +145,6 @@ function getScopedRows(inputs) {
   return optimizerData
     .filter(row => {
       if (inputs.area && row.area !== inputs.area) return false;
-      if (inputs.referenceRule && row.rule !== inputs.referenceRule) return false;
       if (inputs.startDate && String(row.date ?? "") < inputs.startDate) return false;
       if (inputs.endDate && String(row.date ?? "") > inputs.endDate) return false;
       return true;
@@ -166,6 +154,15 @@ function getScopedRows(inputs) {
       if (dateCompare !== 0) return dateCompare;
       return Number(a.contract_sort ?? 0) - Number(b.contract_sort ?? 0);
     });
+}
+
+function getEligibleRules(rows, selectedMarkets) {
+  const allRules = unique(rows.map(r => r.rule)).filter(Boolean);
+
+  return allRules.filter(rule => {
+    const parts = rule.split("_");
+    return parts.every(p => selectedMarkets.includes(p));
+  });
 }
 
 function percentile(values, q) {
@@ -197,16 +194,12 @@ function buildCandidateStrategies(mode) {
   const candidates = [];
 
   if (mode === "charge_only") {
-    buyThresholds.forEach(bq => {
-      candidates.push({ mode, buyQ: bq, sellQ: null });
-    });
+    buyThresholds.forEach(bq => candidates.push({ mode, buyQ: bq, sellQ: null }));
     return candidates;
   }
 
   if (mode === "discharge_only") {
-    sellThresholds.forEach(sq => {
-      candidates.push({ mode, buyQ: null, sellQ: sq });
-    });
+    sellThresholds.forEach(sq => candidates.push({ mode, buyQ: null, sellQ: sq }));
     return candidates;
   }
 
@@ -221,10 +214,8 @@ function buildCandidateStrategies(mode) {
   return candidates;
 }
 
-function runSingleBacktest(rows, inputs, candidate) {
-  if (!rows.length) {
-    return null;
-  }
+function runSingleBacktest(rows, inputs, candidate, rule) {
+  if (!rows.length) return null;
 
   const buyPrices = rows.map(r => Number(r.buy_price)).filter(Number.isFinite);
   const sellPrices = rows.map(r => Number(r.sell_price)).filter(Number.isFinite);
@@ -269,9 +260,7 @@ function runSingleBacktest(rows, inputs, candidate) {
     const buyPrice = Number(row.buy_price);
     const sellPrice = Number(row.sell_price);
 
-    if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice)) {
-      return;
-    }
+    if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice)) return;
 
     let action = "idle";
     let energyRaw = 0;
@@ -336,6 +325,7 @@ function runSingleBacktest(rows, inputs, candidate) {
   const equivalentCycles = inputs.capacityMWh > 0 ? chargeEnergyRaw / inputs.capacityMWh : 0;
 
   return {
+    rule,
     candidate,
     buyThreshold,
     sellThreshold,
@@ -351,16 +341,33 @@ function runSingleBacktest(rows, inputs, candidate) {
   };
 }
 
-function runOptimizerBacktest(rows, inputs) {
+function runOptimizerBacktest(scopedRows, inputs) {
+  const eligibleRules = getEligibleRules(scopedRows, inputs.markets);
   const candidates = buildCandidateStrategies(inputs.strategyMode);
-  const results = candidates
-    .map(candidate => runSingleBacktest(rows, inputs, candidate))
-    .filter(Boolean);
+  const allResults = [];
 
-  if (!results.length) return null;
+  eligibleRules.forEach(rule => {
+    const ruleRows = scopedRows.filter(r => r.rule === rule);
+    if (!ruleRows.length) return;
 
-  results.sort((a, b) => b.totalPnL - a.totalPnL);
-  return results[0];
+    candidates.forEach(candidate => {
+      const result = runSingleBacktest(ruleRows, inputs, candidate, rule);
+      if (result) {
+        allResults.push(result);
+      }
+    });
+  });
+
+  if (!allResults.length) {
+    return { best: null, allResults: [], eligibleRules: [] };
+  }
+
+  allResults.sort((a, b) => b.totalPnL - a.totalPnL);
+  return {
+    best: allResults[0],
+    allResults,
+    eligibleRules
+  };
 }
 
 function formatMode(mode) {
@@ -409,56 +416,97 @@ function renderActionTable(actions) {
   `;
 }
 
-function renderBacktestResult(inputs, rows, bestResult) {
+function renderTopAlternatives(allResults) {
+  if (!allResults.length) return "<div>No alternatives found.</div>";
+
+  const top = allResults.slice(0, 5);
+
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Market Pair</th>
+          <th>Mode</th>
+          <th>Buy Q</th>
+          <th>Sell Q</th>
+          <th>Total P&amp;L</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${top.map((r, idx) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>${RULE_LABELS[r.rule] || r.rule}</td>
+            <td>${formatMode(r.candidate.mode)}</td>
+            <td>${r.candidate.buyQ !== null ? (r.candidate.buyQ * 100).toFixed(0) + "%" : "-"}</td>
+            <td>${r.candidate.sellQ !== null ? (r.candidate.sellQ * 100).toFixed(0) + "%" : "-"}</td>
+            <td>${r.totalPnL.toFixed(2)} €</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderBacktestResult(inputs, scopedRows, run) {
   const resultEl = byId("optimizerResult");
   if (!resultEl) return;
 
-  if (!bestResult) {
+  if (!run.best) {
     resultEl.innerHTML = `
       <div class="optimizer-placeholder" style="border-color:#fda29b;background:#fff1f3;color:#b42318;">
-        <strong>Backtest error</strong><br>
-        No valid strategy result could be computed.
+        <strong>No valid strategy found</strong><br>
+        No eligible historical market pair exists inside the selected markets and date range.
       </div>
     `;
     return;
   }
 
+  const best = run.best;
+
   const strategyNote =
     inputs.strategyMode === "charge_only"
-      ? `Recommended charge threshold: buy when buy price is in the lowest ${(bestResult.candidate.buyQ * 100).toFixed(0)}% of scoped history.`
+      ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge when buy price is in the lowest ${(best.candidate.buyQ * 100).toFixed(0)}% of the scoped history for this pair.`
       : inputs.strategyMode === "discharge_only"
-      ? `Recommended discharge threshold: discharge when sell price is in the highest ${(100 - bestResult.candidate.sellQ * 100).toFixed(0)}% tail of scoped history.`
-      : `Recommended thresholds: charge when buy price is below ${bestResult.buyThreshold?.toFixed(2) ?? "-"} €/MWh and discharge when sell price is above ${bestResult.sellThreshold?.toFixed(2) ?? "-"} €/MWh.`;
+      ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Discharge when sell price is in the highest ${(100 - best.candidate.sellQ * 100).toFixed(0)}% tail of the scoped history for this pair.`
+      : `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge below ${best.buyThreshold?.toFixed(2) ?? "-"} €/MWh and discharge above ${best.sellThreshold?.toFixed(2) ?? "-"} €/MWh for the selected period.`;
 
   resultEl.innerHTML = `
     <div class="optimizer-result-card">
       <div class="optimizer-result-title">Recommended strategy</div>
       <div><strong>Mode:</strong> ${formatMode(inputs.strategyMode)}</div>
-      <div><strong>Reference strategy:</strong> ${RULE_LABELS[inputs.referenceRule] || inputs.referenceRule}</div>
+      <div><strong>Recommended market pair:</strong> ${RULE_LABELS[best.rule] || best.rule}</div>
       <div><strong>Markets selected:</strong> ${inputs.markets.join(", ")}</div>
       <div><strong>Scope:</strong> ${inputs.area} | ${inputs.startDate} → ${inputs.endDate}</div>
       <div style="margin-top:8px;">${strategyNote}</div>
 
       <div class="optimizer-result-grid" style="margin-top:14px;">
-        <div><strong>Scoped rows:</strong> ${rows.length}</div>
-        <div><strong>Total P&amp;L:</strong> ${bestResult.totalPnL.toFixed(2)} €</div>
-        <div><strong>Charge actions:</strong> ${bestResult.chargeActions}</div>
-        <div><strong>Discharge actions:</strong> ${bestResult.dischargeActions}</div>
-        <div><strong>Charged energy:</strong> ${bestResult.chargeEnergyRaw.toFixed(2)} MWh</div>
-        <div><strong>Discharged energy:</strong> ${bestResult.dischargeEnergyRaw.toFixed(2)} MWh</div>
-        <div><strong>Equivalent charge cycles:</strong> ${bestResult.equivalentCycles.toFixed(2)}</div>
-        <div><strong>Ending SoC:</strong> ${bestResult.endingSoc.toFixed(2)} MWh</div>
+        <div><strong>Scoped rows:</strong> ${scopedRows.length}</div>
+        <div><strong>Eligible market pairs:</strong> ${run.eligibleRules.length}</div>
+        <div><strong>Total P&amp;L:</strong> ${best.totalPnL.toFixed(2)} €</div>
+        <div><strong>Charge actions:</strong> ${best.chargeActions}</div>
+        <div><strong>Discharge actions:</strong> ${best.dischargeActions}</div>
+        <div><strong>Charged energy:</strong> ${best.chargeEnergyRaw.toFixed(2)} MWh</div>
+        <div><strong>Discharged energy:</strong> ${best.dischargeEnergyRaw.toFixed(2)} MWh</div>
+        <div><strong>Equivalent charge cycles:</strong> ${best.equivalentCycles.toFixed(2)}</div>
+        <div><strong>Ending SoC:</strong> ${best.endingSoc.toFixed(2)} MWh</div>
       </div>
 
       <div style="margin-top:16px;">
         <strong>Notes</strong><br>
-        This Step 4 optimizer uses the selected historical reference strategy rows and battery constraints only. It does not yet do full multi-market market-routing; that comes in the next step.
+        Step 5 is now market-aware at the historical pair level. It compares all eligible rule pairs inside your selected markets and recommends the best-performing combination for the chosen period.
       </div>
     </div>
 
     <div style="margin-top:16px;">
-      <div class="optimizer-result-title">First 20 active actions</div>
-      ${renderActionTable(bestResult.activeActions)}
+      <div class="optimizer-result-title">Top 5 strategy alternatives</div>
+      ${renderTopAlternatives(run.allResults)}
+    </div>
+
+    <div style="margin-top:16px;">
+      <div class="optimizer-result-title">First 20 active actions of recommended strategy</div>
+      ${renderActionTable(best.activeActions)}
     </div>
   `;
 }
@@ -480,26 +528,26 @@ function handleRunOptimizer() {
     return;
   }
 
-  const rows = getScopedRows(inputs);
-  if (!rows.length) {
+  const scopedRows = getScopedRows(inputs);
+  if (!scopedRows.length) {
     const resultEl = byId("optimizerResult");
     if (resultEl) {
       resultEl.innerHTML = `
         <div class="optimizer-placeholder" style="border-color:#fda29b;background:#fff1f3;color:#b42318;">
           <strong>No scoped data</strong><br>
-          No historical rows match the selected area, strategy, and date range.
+          No historical rows match the selected area and date range.
         </div>
       `;
     }
     return;
   }
 
-  const bestResult = runOptimizerBacktest(rows, inputs);
-  renderBacktestResult(inputs, rows, bestResult);
+  const run = runOptimizerBacktest(scopedRows, inputs);
+  renderBacktestResult(inputs, scopedRows, run);
 }
 
 byId("runOptimizerBtn")?.addEventListener("click", handleRunOptimizer);
 
 loadOptimizerData();
 
-console.log("Advanced BESS Optimizer Step 4 loaded.");
+console.log("Advanced BESS Optimizer Step 5 loaded.");
