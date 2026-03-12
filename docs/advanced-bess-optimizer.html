@@ -24,6 +24,15 @@
   <main class="dashboard">
     <section class="panel">
       <div class="panel-header">
+        <h2>Available Dataset Scope</h2>
+        <p>This section reads the historical optimizer dataset without affecting the main page.</p>
+      </div>
+
+      <div id="optimizerDataStatus" class="optimizer-placeholder">Loading dataset...</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
         <h2>Battery Constraints</h2>
         <p>Define the technical operating limits of the battery.</p>
       </div>
@@ -63,6 +72,45 @@
 
     <section class="panel">
       <div class="panel-header">
+        <h2>Backtest Scope</h2>
+        <p>Choose the historical scope you want to evaluate.</p>
+      </div>
+
+      <div class="optimizer-grid optimizer-grid-3">
+        <div class="filter">
+          <label for="optimizerArea">Area</label>
+          <select id="optimizerArea"></select>
+        </div>
+
+        <div class="filter">
+          <label for="optimizerRule">Reference Strategy</label>
+          <select id="optimizerRule"></select>
+        </div>
+
+        <div class="filter">
+          <label for="strategyMode">Mode</label>
+          <select id="strategyMode">
+            <option value="charge_discharge">Charge + Discharge</option>
+            <option value="charge_only">Charge only</option>
+            <option value="discharge_only">Discharge only</option>
+            <option value="arbitrage">Quant / Buy low, sell high</option>
+          </select>
+        </div>
+
+        <div class="filter">
+          <label for="startDate">Start date</label>
+          <input type="date" id="startDate">
+        </div>
+
+        <div class="filter">
+          <label for="endDate">End date</label>
+          <input type="date" id="endDate">
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
         <h2>Market Participation</h2>
         <p>Select which markets the optimizer is allowed to use.</p>
       </div>
@@ -92,35 +140,6 @@
           <input type="checkbox" id="marketVWAP" checked>
           <span>Intraday Continuous / VWAP</span>
         </label>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h2>Strategy Mode</h2>
-        <p>Choose what the optimizer is allowed to do.</p>
-      </div>
-
-      <div class="optimizer-grid optimizer-grid-3">
-        <div class="filter">
-          <label for="strategyMode">Mode</label>
-          <select id="strategyMode">
-            <option value="charge_discharge">Charge + Discharge</option>
-            <option value="charge_only">Charge only</option>
-            <option value="discharge_only">Discharge only</option>
-            <option value="arbitrage">Quant / Buy low, sell high</option>
-          </select>
-        </div>
-
-        <div class="filter">
-          <label for="startDate">Start date</label>
-          <input type="date" id="startDate">
-        </div>
-
-        <div class="filter">
-          <label for="endDate">End date</label>
-          <input type="date" id="endDate">
-        </div>
       </div>
 
       <div class="optimizer-actions">
