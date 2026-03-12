@@ -354,25 +354,44 @@ table {
 }
 
 th,
+th,
 td {
   border-bottom: 1px solid #eaecf0;
   padding: 12px 10px;
   font-size: 14px;
+  vertical-align: middle;
 }
 
 th {
   text-align: left;
   background: #f8fafc;
   color: #344054;
+  font-weight: 700;
 }
 
 td {
   color: #101828;
 }
 
-td:not(:first-child) {
-  text-align: right;
+/* First two columns are text-like */
+table th:nth-child(1),
+table td:nth-child(1),
+table th:nth-child(2),
+table td:nth-child(2) {
+  text-align: left;
 }
+
+/* Numeric columns align right */
+table th:nth-child(3),
+table td:nth-child(3),
+table th:nth-child(4),
+table td:nth-child(4),
+table th:nth-child(5),
+table td:nth-child(5) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 
 tbody tr:hover {
   background: #f8fafc;
