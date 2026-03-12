@@ -536,31 +536,69 @@ function renderCumulativeCurve(filtered) {
     }
   );
 }
-
-
 function renderContractBar(filtered) {
   if (typeof Plotly === "undefined") return;
+
   const labels = filtered.map(x => `${x.date} | ${x.contract}`);
+  const xVals = filtered.map((_, i) => i);
   const profits = filtered.map(x => Number(x.profit));
   const colors = profits.map(v => (v >= 0 ? "#16a34a" : "#dc2626"));
 
-  Plotly.newPlot("contractBar", [{
-    x: labels,
-    y: profits,
-    type: "bar",
-    marker: { color: colors },
-    hovertemplate: "%{x}<br>Profit: %{y:.2f} €/MWh<extra></extra>"
-  }], {
-    margin: { l: 60, r: 20, t: 20, b: 120 },
-    paper_bgcolor: "white",
-    plot_bgcolor: "white",
-    xaxis: { title: "Date | Contract", tickangle: -60, gridcolor: "#eaecf0" },
-    yaxis: { title: "Profit (€/MWh)", gridcolor: "#eaecf0" }
-  }, {
-    responsive: true,
-    displayModeBar: false
-  });
+  const step = Math.max(1, Math.ceil(labels.length / 12));
+  const tickVals = [];
+  const tickText = [];
+
+  for (let i = 0; i < labels.length; i += step) {
+    const parts = labels[i].split(" | ");
+    if (parts.length === 2) {
+      const shortDate = parts[0].slice(5);
+      tickVals.push(i);
+      tickText.push(`${shortDate} ${parts[1]}`);
+    } else {
+      tickVals.push(i);
+      tickText.push(labels[i]);
+    }
+  }
+
+  Plotly.newPlot(
+    "contractBar",
+    [
+      {
+        x: xVals,
+        y: profits,
+        type: "bar",
+        marker: { color: colors },
+        customdata: labels,
+        hovertemplate: "%{customdata}<br>Profit: %{y:.2f} €/MWh<extra></extra>"
+      }
+    ],
+    {
+      margin: { l: 60, r: 20, t: 20, b: 170 },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white",
+      xaxis: {
+        title: "Date | Contract",
+        tickmode: "array",
+        tickvals: tickVals,
+        ticktext: tickText,
+        tickangle: -55,
+        showgrid: false,
+        zeroline: false,
+        automargin: true
+      },
+      yaxis: {
+        title: "Profit (€/MWh)",
+        gridcolor: "#eaecf0",
+        automargin: true
+      }
+    },
+    {
+      responsive: true,
+      displayModeBar: false
+    }
+  );
 }
+
 
 function renderHistogram(filtered) {
   if (typeof Plotly === "undefined") return;
