@@ -58,6 +58,7 @@
 
           <div class="contracts-panel">
             <label for="contracts">Quarter-hour contracts</label>
+
             <div class="contract-controls">
               <button type="button" id="selectAllBtn" class="preset-btn">Select all</button>
               <button type="button" id="clearAllBtn" class="preset-btn">Clear</button>
@@ -67,6 +68,7 @@
               <button type="button" id="presetMorningBtn" class="preset-btn">Morning</button>
               <button type="button" id="presetEveningBtn" class="preset-btn">Evening</button>
             </div>
+
             <select id="contracts" multiple size="10"></select>
           </div>
         </div>
@@ -172,18 +174,17 @@
       </div>
     </section>
 
-<!-- Detailed Table -->
-<section class="table-section">
-  <details class="breakdown-details">
-    <summary class="breakdown-summary">
-      <span>Contract Breakdown</span>
-      <span class="breakdown-hint">Click to expand / collapse</span>
-    </summary>
-    <div class="breakdown-body">
-      <div id="table">-</div>
-    </div>
-  </details>
-</section>
+    <section class="table-section">
+      <details class="breakdown-details">
+        <summary class="breakdown-summary">
+          <span>Contract Breakdown</span>
+          <span class="breakdown-hint">Click to expand / collapse</span>
+        </summary>
+        <div class="breakdown-body">
+          <div id="table">-</div>
+        </div>
+      </details>
+    </section>
   </main>
 
   <script src="app.js"></script>
