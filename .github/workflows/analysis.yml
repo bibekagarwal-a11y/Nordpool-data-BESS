@@ -26,7 +26,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas matplotlib
+          pip install pandas matplotlib playwright
+          python -m playwright install --with-deps chromium
 
       - name: Create output directories
         run: |
