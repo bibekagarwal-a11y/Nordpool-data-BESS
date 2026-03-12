@@ -12,7 +12,7 @@
     <div>
       <h1>Advanced BESS Optimizer</h1>
       <p class="hero-sub">
-        Configure battery constraints, market participation, and strategy mode for backtesting and optimization.
+        Configure battery constraints, allowed markets, and strategy mode. The optimizer will recommend the best historical charging and discharging setup for the selected period.
       </p>
     </div>
 
@@ -25,7 +25,7 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Available Dataset Scope</h2>
-        <p>This section reads the historical optimizer dataset without affecting the main page.</p>
+        <p>This page reads historical optimizer data independently from the main page.</p>
       </div>
 
       <div id="optimizerDataStatus" class="optimizer-placeholder">Loading dataset...</div>
@@ -83,11 +83,6 @@
         </div>
 
         <div class="filter">
-          <label for="optimizerRule">Reference Strategy</label>
-          <select id="optimizerRule"></select>
-        </div>
-
-        <div class="filter">
           <label for="strategyMode">Mode</label>
           <select id="strategyMode">
             <option value="charge_discharge">Charge + Discharge</option>
@@ -112,7 +107,7 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Market Participation</h2>
-        <p>Select which markets the optimizer is allowed to use.</p>
+        <p>Select which markets the optimizer is allowed to use. It will test all valid historical combinations inside this selection.</p>
       </div>
 
       <div class="optimizer-checkbox-grid">
@@ -150,7 +145,7 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Results</h2>
-        <p>This section will show recommended strategy, dispatch, and backtest output.</p>
+        <p>The optimizer will recommend the best historical market pair and threshold strategy.</p>
       </div>
 
       <div id="optimizerResult" class="optimizer-placeholder">
