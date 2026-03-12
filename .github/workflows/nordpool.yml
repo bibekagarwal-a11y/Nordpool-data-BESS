@@ -1,0 +1,66 @@
+name: Nord Pool Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Backfill from START_DATE to yesterday"
+        required: false
+        default: "false"
+  schedule:
+    # Run hourly; the script itself will only do work at 12:00 Europe/Paris (DST-safe)
+    - cron: "5 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      AREAS: "FR,GER"
+      CURRENCY: "EUR"
+      START_DATE: "2026-03-01"
+      ENFORCE_NOON_PARIS: "1"
+      BACKFILL: ${{ github.event.inputs.backfill == 'true' && '1' || '0' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run bot
+        run: |
+          python nordpool_bot.py
+
+      # Upload raw JSON for debugging (NOT committed to repo)
+      - name: Upload raw JSON debug files
+        uses: actions/upload-artifact@v4
+        with:
+          name: nordpool-raw-json
+          path: artifacts/raw/
+
+      # Commit only the permanent datasets in data/
+      - name: Commit updated datasets
+        run: |
+          git config user.name "nordpool-bot"
+          git config user.email "nordpool-bot@users.noreply.github.com"
+
+          git add data/*.csv || true
+
+          if git diff --cached --quiet; then
+            echo "No dataset changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update Nord Pool datasets [skip ci]"
+          git push
