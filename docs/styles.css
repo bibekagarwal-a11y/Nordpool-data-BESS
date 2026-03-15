@@ -536,3 +536,9 @@ tbody tr:hover {
     min-height: 420px;
   }
 }
+
+.date-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}

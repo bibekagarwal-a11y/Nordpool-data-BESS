@@ -184,8 +184,8 @@ def run(backfill: bool):
     """Main execution logic for fetching data."""
     ensure_dirs()
     start = date.fromisoformat(START_DATE)
-    yesterday = paris_now().date() - timedelta(days=1)
-    dates = list(daterange(start, yesterday)) if backfill else [yesterday]
+    today = paris_now().date()
+    dates = list(daterange(start, today)) if backfill else [today]
 
     all_dayahead, all_ida1, all_ida2, all_ida3, all_vwap_qh = [], [], [], [], []
     auction_markets = [

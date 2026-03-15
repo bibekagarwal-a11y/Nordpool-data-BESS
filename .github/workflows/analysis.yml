@@ -1,8 +1,13 @@
 name: Electricity Market Analysis
 
 on:
+  # Run automatically after the Nord Pool Bot pushes new data
+  workflow_run:
+    workflows: ["Nord Pool Bot"]
+    types: [completed]
+  # Also run daily at 15:00 UTC as a safety net (after 3 PM Paris data fetch)
   schedule:
-    - cron: "0 7 * * *"
+    - cron: "0 15 * * *"
   workflow_dispatch:
 
 jobs:

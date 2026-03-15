@@ -222,8 +222,61 @@ function updateDateInputs() {
     throw new Error(`No ${dateField} values found in data.`);
   }
 
-  if (byId("startDate")) byId("startDate").value = dates[0];
-  if (byId("endDate")) byId("endDate").value = dates[dates.length - 1];
+  const minDate = dates[0];
+  const maxDate = dates[dates.length - 1];
+
+  const startEl = byId("startDate");
+  const endEl = byId("endDate");
+
+  if (startEl) {
+    startEl.min = minDate;
+    startEl.max = maxDate;
+    startEl.value = maxDate;
+  }
+  if (endEl) {
+    endEl.min = minDate;
+    endEl.max = maxDate;
+    endEl.value = maxDate;
+  }
+}
+
+function applyDatePreset(preset) {
+  const dateField = getActiveDateField();
+  const dates = unique(data.map(x => x[dateField])).filter(Boolean).sort();
+  if (!dates.length) return;
+
+  const maxDate = dates[dates.length - 1];
+  const startEl = byId("startDate");
+  const endEl = byId("endDate");
+
+  if (preset === "latest") {
+    if (startEl) startEl.value = maxDate;
+    if (endEl) endEl.value = maxDate;
+  } else if (preset === "7days") {
+    const end = new Date(maxDate);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6);
+    const startStr = start.toISOString().slice(0, 10);
+    const clampedStart = startStr < dates[0] ? dates[0] : startStr;
+    if (startEl) startEl.value = clampedStart;
+    if (endEl) endEl.value = maxDate;
+  } else if (preset === "all") {
+    if (startEl) startEl.value = dates[0];
+    if (endEl) endEl.value = maxDate;
+  }
+
+  setActiveDatePreset(preset);
+  updateContracts();
+}
+
+function setActiveDatePreset(presetName) {
+  document.querySelectorAll(".date-preset-btn").forEach(btn => {
+    btn.classList.remove("active-preset");
+  });
+  if (presetName) {
+    const btn = byId(`datePreset_${presetName}`);
+    if (btn) btn.classList.add("active-preset");
+  }
 }
 
 function populateSelectors() {
@@ -762,6 +815,10 @@ byId("contracts")?.addEventListener("change", () => {
   setActivePreset(null);
   render();
 });
+
+byId("datePreset_latest")?.addEventListener("click", () => applyDatePreset("latest"));
+byId("datePreset_7days")?.addEventListener("click", () => applyDatePreset("7days"));
+byId("datePreset_all")?.addEventListener("click", () => applyDatePreset("all"));
 
 byId("selectAllBtn")?.addEventListener("click", () => {
   selectAllOptions("contracts");
