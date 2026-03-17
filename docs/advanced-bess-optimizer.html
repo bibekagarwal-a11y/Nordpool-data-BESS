@@ -1209,9 +1209,9 @@ function getParams() {
 }
 
 function buildQGrid() {
-  const bMan = parseInt(document.getElementById('buyQMin').value)  || 5;
+  const bMin = parseInt(document.getElementById('buyQMin').value)  || 5;
   const bMax = parseInt(document.getElementById('buyQMax').value)  || 40;
-  const sMIn = parseInt(document.getElementById('sellQMin').value) || 60;
+  const sMin = parseInt(document.getElementById('sellQMin').value) || 60;
   const sMax = parseInt(document.getElementById('sellQMax').value) || 95;
   const bGrid = [], sGrid = [];
   for (let q = bMin; q <= bMax; q += 5) bGrid.push(q);
