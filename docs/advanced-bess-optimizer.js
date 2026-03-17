@@ -33,6 +33,19 @@ function setOptions(id, values, labelMap = null) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatNumber(value, digits = 2) {
+  return Number.isFinite(value) ? Number(value).toFixed(digits) : "-";
+}
+
 async function loadOptimizerData() {
   const statusEl = byId("optimizerDataStatus");
   try {
@@ -56,9 +69,9 @@ async function loadOptimizerData() {
     console.error(err);
     if (statusEl) {
       statusEl.innerHTML = `
-        <div class="card error-card">
+        <div class="optimizer-card">
           <strong>Dataset error</strong><br />
-          ${err.message}
+          ${escapeHtml(err.message)}
         </div>
       `;
     }
@@ -71,12 +84,12 @@ function buildDatasetSummary() {
   const dates = unique(optimizerData.map((x) => x.date)).filter(Boolean).sort();
 
   return `
-    <div class="card">
+    <div class="optimizer-card">
       <strong>Loaded historical dataset</strong><br />
       Rows: ${optimizerData.length}<br />
-      Areas: ${areas.join(", ") || "-"}<br />
+      Areas: ${escapeHtml(areas.join(", ") || "-")}<br />
       Historical market pairs: ${rules.length}<br />
-      Date range: ${dates[0] || "-"} → ${dates[dates.length - 1] || "-"}
+      Date range: ${escapeHtml(dates[0] || "-")} → ${escapeHtml(dates[dates.length - 1] || "-")}
     </div>
   `;
 }
@@ -156,10 +169,7 @@ function getEligibleRules(rows, selectedMarkets) {
 function percentile(values, q) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.floor(q * (sorted.length - 1)))
-  );
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))));
   return sorted[idx];
 }
 
@@ -205,9 +215,9 @@ function buildCandidateStrategies(mode) {
 }
 
 /*
-  Walk-forward version:
+  Walk-forward backtest:
   thresholds are computed only from prices seen BEFORE the current row.
-  This avoids in-sample lookahead bias.
+  This removes lookahead bias from the original implementation.
 */
 function runSingleBacktest(rows, inputs, candidate, rule) {
   if (!rows.length) return null;
@@ -282,10 +292,7 @@ function runSingleBacktest(rows, inputs, candidate, rule) {
 
     if (canCharge) {
       const socRoomRaw = (maxSocMWh - soc) / eta;
-      const chargeRaw = Math.max(
-        0,
-        Math.min(stepRawLimit, dailyChargeRemaining, socRoomRaw)
-      );
+      const chargeRaw = Math.max(0, Math.min(stepRawLimit, dailyChargeRemaining, socRoomRaw));
 
       if (chargeRaw > 0) {
         soc += chargeRaw * eta;
@@ -322,6 +329,8 @@ function runSingleBacktest(rows, inputs, candidate, rule) {
       energy_raw_mwh: energyRaw,
       pnl_delta: pnlDelta,
       soc_after: soc,
+      buy_threshold_used: buyThreshold,
+      sell_threshold_used: sellThreshold,
     });
 
     historicalBuyPrices.push(buyPrice);
@@ -340,8 +349,7 @@ function runSingleBacktest(rows, inputs, candidate, rule) {
       ? percentile(historicalSellPrices, candidate.sellQ)
       : null;
 
-  const equivalentCycles =
-    inputs.capacityMWh > 0 ? chargeEnergyRaw / inputs.capacityMWh : 0;
+  const equivalentCycles = inputs.capacityMWh > 0 ? chargeEnergyRaw / inputs.capacityMWh : 0;
 
   return {
     rule,
@@ -400,35 +408,37 @@ function renderActionTable(actions) {
     .map(
       (a) => `
         <tr>
-          <td>${a.date}</td>
-          <td>${a.contract}</td>
-          <td>${a.action}</td>
-          <td>${a.buy_price.toFixed(2)}</td>
-          <td>${a.sell_price.toFixed(2)}</td>
-          <td>${a.energy_raw_mwh.toFixed(2)}</td>
-          <td>${a.pnl_delta.toFixed(2)}</td>
-          <td>${a.soc_after.toFixed(2)}</td>
+          <td>${escapeHtml(a.date)}</td>
+          <td>${escapeHtml(a.contract)}</td>
+          <td>${escapeHtml(a.action)}</td>
+          <td>${formatNumber(a.buy_price)}</td>
+          <td>${formatNumber(a.sell_price)}</td>
+          <td>${formatNumber(a.energy_raw_mwh)}</td>
+          <td>${formatNumber(a.pnl_delta)}</td>
+          <td>${formatNumber(a.soc_after)}</td>
         </tr>
       `
     )
     .join("");
 
   return `
-    <table class="optimizer-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Contract</th>
-          <th>Action</th>
-          <th>Buy</th>
-          <th>Sell</th>
-          <th>Energy</th>
-          <th>P&L Δ</th>
-          <th>SoC After</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div style="overflow-x:auto;">
+      <table class="optimizer-table" style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Contract</th>
+            <th>Action</th>
+            <th>Buy</th>
+            <th>Sell</th>
+            <th>Energy</th>
+            <th>P&amp;L Δ</th>
+            <th>SoC After</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -443,30 +453,32 @@ function renderTopAlternatives(allResults) {
       (r, idx) => `
         <tr>
           <td>${idx + 1}</td>
-          <td>${RULE_LABELS[r.rule] || r.rule}</td>
-          <td>${formatMode(r.candidate.mode)}</td>
+          <td>${escapeHtml(RULE_LABELS[r.rule] || r.rule)}</td>
+          <td>${escapeHtml(formatMode(r.candidate.mode))}</td>
           <td>${r.candidate.buyQ !== null ? `${(r.candidate.buyQ * 100).toFixed(0)}%` : "-"}</td>
           <td>${r.candidate.sellQ !== null ? `${(r.candidate.sellQ * 100).toFixed(0)}%` : "-"}</td>
-          <td>${r.totalPnL.toFixed(2)} €</td>
+          <td>${formatNumber(r.totalPnL)} €</td>
         </tr>
       `
     )
     .join("");
 
   return `
-    <table class="optimizer-table">
-      <thead>
-        <tr>
-          <th>Rank</th>
-          <th>Market Pair</th>
-          <th>Mode</th>
-          <th>Buy Q</th>
-          <th>Sell Q</th>
-          <th>Total P&L</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div style="overflow-x:auto;">
+      <table class="optimizer-table" style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Market Pair</th>
+            <th>Mode</th>
+            <th>Buy Q</th>
+            <th>Sell Q</th>
+            <th>Total P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -517,33 +529,35 @@ function renderDailySummaryTable(dailyRows) {
     .map(
       (r) => `
         <tr>
-          <td>${r.date}</td>
-          <td>${r.pnl.toFixed(2)}</td>
-          <td>${r.chargeEnergy.toFixed(2)}</td>
-          <td>${r.dischargeEnergy.toFixed(2)}</td>
+          <td>${escapeHtml(r.date)}</td>
+          <td>${formatNumber(r.pnl)}</td>
+          <td>${formatNumber(r.chargeEnergy)}</td>
+          <td>${formatNumber(r.dischargeEnergy)}</td>
           <td>${r.charges}</td>
           <td>${r.discharges}</td>
-          <td>${r.lastSoc.toFixed(2)}</td>
+          <td>${formatNumber(r.lastSoc)}</td>
         </tr>
       `
     )
     .join("");
 
   el.innerHTML = `
-    <table class="optimizer-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Daily P&L</th>
-          <th>Charge Energy</th>
-          <th>Discharge Energy</th>
-          <th>Charge Actions</th>
-          <th>Discharge Actions</th>
-          <th>Ending SoC</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div style="overflow-x:auto;">
+      <table class="optimizer-table" style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Daily P&amp;L</th>
+            <th>Charge Energy</th>
+            <th>Discharge Energy</th>
+            <th>Charge Actions</th>
+            <th>Discharge Actions</th>
+            <th>Ending SoC</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -560,9 +574,7 @@ function renderOptimizerCharts(bestResult) {
     return cumulative[i];
   }, 0);
 
-  const stepLabels = bestResult.actions.map(
-    (a, i) => `${a.date} | ${a.contract} | ${i + 1}`
-  );
+  const stepLabels = bestResult.actions.map((a, i) => `${a.date} | ${a.contract} | ${i + 1}`);
   const socTrace = bestResult.actions.map((a) => a.soc_after);
 
   Plotly.newPlot(
@@ -614,9 +626,7 @@ function renderOptimizerCharts(bestResult) {
         x: stepLabels,
         y: socTrace,
         mode: "lines",
-        customdata: bestResult.actions.map(
-          (a) => `${a.date} | ${a.contract} | ${a.action}`
-        ),
+        customdata: bestResult.actions.map((a) => `${a.date} | ${a.contract} | ${a.action}`),
         hovertemplate: "%{customdata}<br>SoC: %{y:.2f} MWh<extra></extra>",
       },
     ],
@@ -664,7 +674,7 @@ function renderBacktestResult(inputs, scopedRows, run) {
 
   if (!run.best) {
     resultEl.innerHTML = `
-      <div class="card">
+      <div class="optimizer-card">
         <strong>No valid strategy found</strong><br />
         No eligible historical market pair exists inside the selected markets and date range.
       </div>
@@ -683,22 +693,22 @@ function renderBacktestResult(inputs, scopedRows, run) {
       : `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge below ${best.buyThreshold?.toFixed(2) ?? "-"} €/MWh and discharge above ${best.sellThreshold?.toFixed(2) ?? "-"} €/MWh using walk-forward thresholds.`;
 
   resultEl.innerHTML = `
-    <div class="card">
+    <div class="optimizer-card">
       <h3>Recommended strategy</h3>
-      <p><strong>Mode:</strong> ${formatMode(inputs.strategyMode)}</p>
-      <p><strong>Recommended market pair:</strong> ${RULE_LABELS[best.rule] || best.rule}</p>
-      <p><strong>Markets selected:</strong> ${inputs.markets.join(", ")}</p>
-      <p><strong>Scope:</strong> ${inputs.area} | ${inputs.startDate} → ${inputs.endDate}</p>
-      <p>${strategyNote}</p>
+      <p><strong>Mode:</strong> ${escapeHtml(formatMode(inputs.strategyMode))}</p>
+      <p><strong>Recommended market pair:</strong> ${escapeHtml(RULE_LABELS[best.rule] || best.rule)}</p>
+      <p><strong>Markets selected:</strong> ${escapeHtml(inputs.markets.join(", "))}</p>
+      <p><strong>Scope:</strong> ${escapeHtml(inputs.area)} | ${escapeHtml(inputs.startDate)} → ${escapeHtml(inputs.endDate)}</p>
+      <p>${escapeHtml(strategyNote)}</p>
       <p><strong>Scoped rows:</strong> ${scopedRows.length}</p>
       <p><strong>Eligible market pairs:</strong> ${run.eligibleRules.length}</p>
-      <p><strong>Total P&L:</strong> ${best.totalPnL.toFixed(2)} €</p>
+      <p><strong>Total P&L:</strong> ${formatNumber(best.totalPnL)} €</p>
       <p><strong>Charge actions:</strong> ${best.chargeActions}</p>
       <p><strong>Discharge actions:</strong> ${best.dischargeActions}</p>
-      <p><strong>Charged energy:</strong> ${best.chargeEnergyRaw.toFixed(2)} MWh</p>
-      <p><strong>Discharged energy:</strong> ${best.dischargeEnergyRaw.toFixed(2)} MWh</p>
-      <p><strong>Equivalent charge cycles:</strong> ${best.equivalentCycles.toFixed(2)}</p>
-      <p><strong>Ending SoC:</strong> ${best.endingSoc.toFixed(2)} MWh</p>
+      <p><strong>Charged energy:</strong> ${formatNumber(best.chargeEnergyRaw)} MWh</p>
+      <p><strong>Discharged energy:</strong> ${formatNumber(best.dischargeEnergyRaw)} MWh</p>
+      <p><strong>Equivalent charge cycles:</strong> ${formatNumber(best.equivalentCycles)}</p>
+      <p><strong>Ending SoC:</strong> ${formatNumber(best.endingSoc)} MWh</p>
       <p><strong>Notes:</strong> This version uses walk-forward thresholds and avoids using future prices to set current thresholds.</p>
 
       <h3>Top 5 strategy alternatives</h3>
@@ -720,9 +730,9 @@ function handleRunOptimizer() {
     const resultEl = byId("optimizerResult");
     if (resultEl) {
       resultEl.innerHTML = `
-        <div class="card error-card">
+        <div class="optimizer-card">
           <strong>Input error</strong><br />
-          ${error}
+          ${escapeHtml(error)}
         </div>
       `;
     }
@@ -736,7 +746,7 @@ function handleRunOptimizer() {
     const resultEl = byId("optimizerResult");
     if (resultEl) {
       resultEl.innerHTML = `
-        <div class="card">
+        <div class="optimizer-card">
           <strong>No scoped data</strong><br />
           No historical rows match the selected area and date range.
         </div>
