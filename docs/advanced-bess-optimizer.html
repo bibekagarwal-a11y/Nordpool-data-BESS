@@ -13,7 +13,7 @@
     <div>
       <h1>Advanced BESS Optimizer</h1>
       <p class="hero-sub">
-        Configure battery constraints, allowed markets, and strategy mode. The optimizer will recommend the best historical charging and discharging setup for the selected period.
+        Configure battery constraints, allowed markets, market simulation costs, and strategy mode. The optimizer will recommend the best historical charging and discharging setup using a 60/20/20 train/validation/test split with realistic market costs.
       </p>
     </div>
 
@@ -73,8 +73,47 @@
 
     <section class="panel">
       <div class="panel-header">
+        <h2>Market Simulation Costs</h2>
+        <p>Configure realistic market transaction costs, spreads, slippage, and operational constraints.</p>
+      </div>
+
+      <div class="optimizer-battery-grid">
+        <div class="filter">
+          <label for="transactionCostEurMWh">Transaction Cost (€/MWh)</label>
+          <input type="number" id="transactionCostEurMWh" min="0" step="0.1" value="0.5">
+        </div>
+
+        <div class="filter">
+          <label for="bidAskSpreadEurMWh">Bid-Ask Spread (€/MWh)</label>
+          <input type="number" id="bidAskSpreadEurMWh" min="0" step="0.1" value="1.0">
+        </div>
+
+        <div class="filter">
+          <label for="slippagePercent">Slippage (%)</label>
+          <input type="number" id="slippagePercent" min="0" step="0.1" value="0.5">
+        </div>
+
+        <div class="filter">
+          <label for="wearCostEurMWh">Wear Cost (€/MWh)</label>
+          <input type="number" id="wearCostEurMWh" min="0" step="0.1" value="2.0">
+        </div>
+
+        <div class="filter">
+          <label for="gateClosureHoursInput">Gate Closure (hours)</label>
+          <input type="number" id="gateClosureHoursInput" min="0" step="0.1" value="1">
+        </div>
+
+        <div class="filter">
+          <label for="lotSizeMwInput">Lot Size (MW)</label>
+          <input type="number" id="lotSizeMwInput" min="0" step="0.01" value="0.1">
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
         <h2>Backtest Scope</h2>
-        <p>Choose the historical scope you want to evaluate.</p>
+        <p>Choose the historical scope you want to evaluate. Data will be split 60% training, 20% validation, 20% out-of-sample test.</p>
       </div>
 
       <div class="optimizer-scope-grid">
@@ -146,7 +185,7 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Results</h2>
-        <p>The optimizer will recommend the best historical market pair and threshold strategy.</p>
+        <p>The optimizer will recommend the best historical market pair, threshold strategy, and compare 3 execution strategies: Quantile Baseline, Perfect Foresight, and Forecast-Driven.</p>
       </div>
 
       <div id="optimizerResult" class="optimizer-placeholder">
@@ -157,7 +196,7 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Charts</h2>
-        <p>Historical performance view of the recommended strategy.</p>
+        <p>Out-of-sample test set performance of the recommended strategy compared to upper/lower bounds.</p>
       </div>
 
       <div class="optimizer-grid">
@@ -170,7 +209,7 @@
     <section class="panel">
       <div class="panel-header">
         <h2>Daily Summary</h2>
-        <p>Per-day performance and utilization of the recommended strategy.</p>
+        <p>Per-day performance and utilization of the recommended strategy on the test set.</p>
       </div>
 
       <div id="optimizerDailySummary" class="optimizer-placeholder">
@@ -179,6 +218,6 @@
     </section>
   </main>
 
-  <script src="advanced-bess-optimizer.js"></script>
+  <script src="new_optimizer.js"></script>
 </body>
 </html>

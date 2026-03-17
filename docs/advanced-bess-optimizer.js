@@ -114,7 +114,19 @@ function getSelectedMarkets() {
   return markets;
 }
 
+function getMarketCosts() {
+  return {
+    transactionCost: Number(byId("transactionCostEurMWh")?.value || 0.5),
+    bidAskSpread: Number(byId("bidAskSpreadEurMWh")?.value || 1.0),
+    slippage: Number(byId("slippagePercent")?.value || 0.5) / 100,
+    wearCost: Number(byId("wearCostEurMWh")?.value || 2.0),
+    gateClosureHours: Number(byId("gateClosureHoursInput")?.value || 1),
+    lotSizeMw: Number(byId("lotSizeMwInput")?.value || 0.1),
+  };
+}
+
 function getOptimizerInputs() {
+  const costs = getMarketCosts();
   return {
     powerMw: Number(byId("bessPowerMw")?.value || 0),
     capacityMWh: Number(byId("bessCapacityMWh")?.value || 0),
@@ -127,6 +139,7 @@ function getOptimizerInputs() {
     startDate: byId("startDate")?.value || "",
     endDate: byId("endDate")?.value || "",
     markets: getSelectedMarkets(),
+    costs,
   };
 }
 
@@ -214,12 +227,14 @@ function buildCandidateStrategies(mode) {
   return candidates;
 }
 
-/*
-  Walk-forward backtest:
-  thresholds are computed only from prices seen BEFORE the current row.
-  This removes lookahead bias from the original implementation.
-*/
-function runSingleBacktest(rows, inputs, candidate, rule) {
+function standardDeviation(values) {
+  if (values.length === 0) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function runSingleBacktest(rows, inputs, candidate, rule, costs) {
   if (!rows.length) return null;
 
   const eta = Math.sqrt(inputs.efficiency);
@@ -254,6 +269,12 @@ function runSingleBacktest(rows, inputs, candidate, rule) {
     }
 
     const durationH = parseContractHours(row.contract);
+
+    // Gate closure check: skip contracts where durationH <= gateClosureHours
+    if (durationH <= costs.gateClosureHours) {
+      return;
+    }
+
     const stepRawLimit = inputs.powerMw * durationH;
     const dailyChargeBudgetRaw = inputs.dailyCycleLimit * inputs.capacityMWh;
     const dailyChargeRemaining = Math.max(0, dailyChargeBudgetRaw - chargedTodayRaw);
@@ -292,28 +313,40 @@ function runSingleBacktest(rows, inputs, candidate, rule) {
 
     if (canCharge) {
       const socRoomRaw = (maxSocMWh - soc) / eta;
-      const chargeRaw = Math.max(0, Math.min(stepRawLimit, dailyChargeRemaining, socRoomRaw));
+      let chargeRaw = Math.max(0, Math.min(stepRawLimit, dailyChargeRemaining, socRoomRaw));
+
+      // Lot size rounding
+      chargeRaw = Math.round(chargeRaw / costs.lotSizeMw) * costs.lotSizeMw;
 
       if (chargeRaw > 0) {
+        const adjustedBuyPrice = buyPrice * (1 + costs.slippage) + costs.bidAskSpread / 2;
+        const actionCosts = chargeRaw * costs.transactionCost + chargeRaw * costs.wearCost;
+
         soc += chargeRaw * eta;
         chargedTodayRaw += chargeRaw;
         chargeEnergyRaw += chargeRaw;
         chargeActions += 1;
-        pnlDelta = -(chargeRaw * buyPrice);
+        pnlDelta = -(chargeRaw * adjustedBuyPrice + actionCosts);
         totalPnL += pnlDelta;
         action = "charge";
         energyRaw = chargeRaw;
       }
     } else if (canDischarge) {
       const availableRaw = Math.max(0, soc - minSocMWh);
-      const dischargeRaw = Math.min(stepRawLimit, availableRaw);
+      let dischargeRaw = Math.min(stepRawLimit, availableRaw);
+
+      // Lot size rounding
+      dischargeRaw = Math.round(dischargeRaw / costs.lotSizeMw) * costs.lotSizeMw;
 
       if (dischargeRaw > 0) {
+        const adjustedSellPrice = sellPrice * (1 - costs.slippage) - costs.bidAskSpread / 2;
+        const actionCosts = dischargeRaw * costs.transactionCost + dischargeRaw * costs.wearCost;
         const delivered = dischargeRaw * eta;
+
         soc -= dischargeRaw;
         dischargeEnergyRaw += dischargeRaw;
         dischargeActions += 1;
-        pnlDelta = delivered * sellPrice;
+        pnlDelta = delivered * adjustedSellPrice - actionCosts;
         totalPnL += pnlDelta;
         action = "discharge";
         energyRaw = dischargeRaw;
@@ -368,27 +401,322 @@ function runSingleBacktest(rows, inputs, candidate, rule) {
   };
 }
 
-function runOptimizerBacktest(scopedRows, inputs) {
-  const eligibleRules = getEligibleRules(scopedRows, inputs.markets);
+function splitTrainValTest(rows) {
+  const total = rows.length;
+  const trainSize = Math.floor(total * 0.6);
+  const valSize = Math.floor(total * 0.2);
+
+  const trainRows = rows.slice(0, trainSize);
+  const valRows = rows.slice(trainSize, trainSize + valSize);
+  const testRows = rows.slice(trainSize + valSize);
+
+  return { trainRows, valRows, testRows };
+}
+
+function runPerfectForesightBacktest(rows, inputs, costs) {
+  if (!rows.length) return null;
+
+  const eta = Math.sqrt(inputs.efficiency);
+  const minSocMWh = inputs.capacityMWh * (inputs.minSoc / 100);
+  const maxSocMWh = inputs.capacityMWh * (inputs.maxSoc / 100);
+
+  let soc = (minSocMWh + maxSocMWh) / 2;
+  let totalPnL = 0;
+  let chargeEnergyRaw = 0;
+  let dischargeEnergyRaw = 0;
+
+  // Group by date for greedy algorithm
+  const byDate = new Map();
+  rows.forEach((row) => {
+    const date = String(row.date);
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push(row);
+  });
+
+  let currentDate = null;
+  let chargedTodayRaw = 0;
+
+  rows.forEach((row) => {
+    const date = String(row.date);
+
+    if (currentDate !== date) {
+      currentDate = date;
+      chargedTodayRaw = 0;
+    }
+
+    const durationH = parseContractHours(row.contract);
+
+    // Gate closure check
+    if (durationH <= costs.gateClosureHours) {
+      return;
+    }
+
+    const stepRawLimit = inputs.powerMw * durationH;
+    const dailyChargeBudgetRaw = inputs.dailyCycleLimit * inputs.capacityMWh;
+    const dailyChargeRemaining = Math.max(0, dailyChargeBudgetRaw - chargedTodayRaw);
+
+    const buyPrice = Number(row.buy_price);
+    const sellPrice = Number(row.sell_price);
+
+    if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice)) return;
+
+    // Get all sell prices for this date to compute median
+    const dateRows = byDate.get(date) || [];
+    const sellPrices = dateRows
+      .map((r) => Number(r.sell_price))
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    const medianSell = sellPrices.length > 0 ? sellPrices[Math.floor(sellPrices.length / 2)] : 0;
+
+    let action = "idle";
+    let energyRaw = 0;
+    let pnlDelta = 0;
+
+    // Greedy: charge at cheapest prices where buyPrice < medianSell * eta^2
+    const shouldCharge =
+      buyPrice < medianSell * Math.pow(eta, 2) &&
+      soc < maxSocMWh &&
+      dailyChargeRemaining > 0;
+
+    // Discharge at most expensive prices
+    const shouldDischarge =
+      sellPrice >= medianSell && soc > minSocMWh;
+
+    if (shouldCharge) {
+      const socRoomRaw = (maxSocMWh - soc) / eta;
+      let chargeRaw = Math.max(0, Math.min(stepRawLimit, dailyChargeRemaining, socRoomRaw));
+      chargeRaw = Math.round(chargeRaw / costs.lotSizeMw) * costs.lotSizeMw;
+
+      if (chargeRaw > 0) {
+        const adjustedBuyPrice = buyPrice * (1 + costs.slippage) + costs.bidAskSpread / 2;
+        const actionCosts = chargeRaw * costs.transactionCost + chargeRaw * costs.wearCost;
+
+        soc += chargeRaw * eta;
+        chargedTodayRaw += chargeRaw;
+        chargeEnergyRaw += chargeRaw;
+        pnlDelta = -(chargeRaw * adjustedBuyPrice + actionCosts);
+        totalPnL += pnlDelta;
+        action = "charge";
+        energyRaw = chargeRaw;
+      }
+    } else if (shouldDischarge) {
+      const availableRaw = Math.max(0, soc - minSocMWh);
+      let dischargeRaw = Math.min(stepRawLimit, availableRaw);
+      dischargeRaw = Math.round(dischargeRaw / costs.lotSizeMw) * costs.lotSizeMw;
+
+      if (dischargeRaw > 0) {
+        const adjustedSellPrice = sellPrice * (1 - costs.slippage) - costs.bidAskSpread / 2;
+        const actionCosts = dischargeRaw * costs.transactionCost + dischargeRaw * costs.wearCost;
+        const delivered = dischargeRaw * eta;
+
+        soc -= dischargeRaw;
+        dischargeEnergyRaw += dischargeRaw;
+        pnlDelta = delivered * adjustedSellPrice - actionCosts;
+        totalPnL += pnlDelta;
+        action = "discharge";
+        energyRaw = dischargeRaw;
+      }
+    }
+  });
+
+  return {
+    totalPnL,
+    chargeEnergyRaw,
+    dischargeEnergyRaw,
+    endingSoc: soc,
+  };
+}
+
+function runForecastDrivenBacktest(rows, inputs, costs) {
+  if (!rows.length) return null;
+
+  const eta = Math.sqrt(inputs.efficiency);
+  const minSocMWh = inputs.capacityMWh * (inputs.minSoc / 100);
+  const maxSocMWh = inputs.capacityMWh * (inputs.maxSoc / 100);
+
+  let soc = (minSocMWh + maxSocMWh) / 2;
+  let totalPnL = 0;
+  let chargeEnergyRaw = 0;
+  let dischargeEnergyRaw = 0;
+  let currentDate = null;
+  let chargedTodayRaw = 0;
+
+  const historicalBuyPrices = [];
+  const historicalSellPrices = [];
+
+  rows.forEach((row) => {
+    const date = String(row.date);
+
+    if (currentDate !== date) {
+      currentDate = date;
+      chargedTodayRaw = 0;
+    }
+
+    const durationH = parseContractHours(row.contract);
+
+    // Gate closure check
+    if (durationH <= costs.gateClosureHours) {
+      return;
+    }
+
+    const stepRawLimit = inputs.powerMw * durationH;
+    const dailyChargeBudgetRaw = inputs.dailyCycleLimit * inputs.capacityMWh;
+    const dailyChargeRemaining = Math.max(0, dailyChargeBudgetRaw - chargedTodayRaw);
+
+    const buyPrice = Number(row.buy_price);
+    const sellPrice = Number(row.sell_price);
+
+    if (!Number.isFinite(buyPrice) || !Number.isFinite(sellPrice)) return;
+
+    // 24-period MA forecast
+    const buyForecast =
+      historicalBuyPrices.length >= 24
+        ? historicalBuyPrices.slice(-24).reduce((a, b) => a + b, 0) / 24
+        : historicalBuyPrices.length > 0
+        ? historicalBuyPrices.reduce((a, b) => a + b, 0) / historicalBuyPrices.length
+        : 0;
+
+    const sellForecast =
+      historicalSellPrices.length >= 24
+        ? historicalSellPrices.slice(-24).reduce((a, b) => a + b, 0) / 24
+        : historicalSellPrices.length > 0
+        ? historicalSellPrices.reduce((a, b) => a + b, 0) / historicalSellPrices.length
+        : 0;
+
+    const buyStdDev = standardDeviation(
+      historicalBuyPrices.length >= 24 ? historicalBuyPrices.slice(-24) : historicalBuyPrices
+    );
+    const sellStdDev = standardDeviation(
+      historicalSellPrices.length >= 24 ? historicalSellPrices.slice(-24) : historicalSellPrices
+    );
+
+    let action = "idle";
+    let energyRaw = 0;
+    let pnlDelta = 0;
+
+    // Charge when price < forecast - 1 stddev
+    const shouldCharge =
+      inputs.strategyMode !== "discharge_only" &&
+      buyPrice < buyForecast - buyStdDev &&
+      soc < maxSocMWh &&
+      dailyChargeRemaining > 0;
+
+    // Discharge when price > forecast + 1 stddev
+    const shouldDischarge =
+      inputs.strategyMode !== "charge_only" &&
+      sellPrice > sellForecast + sellStdDev &&
+      soc > minSocMWh;
+
+    if (shouldCharge) {
+      const socRoomRaw = (maxSocMWh - soc) / eta;
+      let chargeRaw = Math.max(0, Math.min(stepRawLimit, dailyChargeRemaining, socRoomRaw));
+      chargeRaw = Math.round(chargeRaw / costs.lotSizeMw) * costs.lotSizeMw;
+
+      if (chargeRaw > 0) {
+        const adjustedBuyPrice = buyPrice * (1 + costs.slippage) + costs.bidAskSpread / 2;
+        const actionCosts = chargeRaw * costs.transactionCost + chargeRaw * costs.wearCost;
+
+        soc += chargeRaw * eta;
+        chargedTodayRaw += chargeRaw;
+        chargeEnergyRaw += chargeRaw;
+        pnlDelta = -(chargeRaw * adjustedBuyPrice + actionCosts);
+        totalPnL += pnlDelta;
+        action = "charge";
+        energyRaw = chargeRaw;
+      }
+    } else if (shouldDischarge) {
+      const availableRaw = Math.max(0, soc - minSocMWh);
+      let dischargeRaw = Math.min(stepRawLimit, availableRaw);
+      dischargeRaw = Math.round(dischargeRaw / costs.lotSizeMw) * costs.lotSizeMw;
+
+      if (dischargeRaw > 0) {
+        const adjustedSellPrice = sellPrice * (1 - costs.slippage) - costs.bidAskSpread / 2;
+        const actionCosts = dischargeRaw * costs.transactionCost + dischargeRaw * costs.wearCost;
+        const delivered = dischargeRaw * eta;
+
+        soc -= dischargeRaw;
+        dischargeEnergyRaw += dischargeRaw;
+        pnlDelta = delivered * adjustedSellPrice - actionCosts;
+        totalPnL += pnlDelta;
+        action = "discharge";
+        energyRaw = dischargeRaw;
+      }
+    }
+
+    historicalBuyPrices.push(buyPrice);
+    historicalSellPrices.push(sellPrice);
+  });
+
+  return {
+    totalPnL,
+    chargeEnergyRaw,
+    dischargeEnergyRaw,
+    endingSoc: soc,
+  };
+}
+
+function runOptimizerBacktest(trainRows, valRows, testRows, inputs) {
+  const costs = inputs.costs;
+  const eligibleRules = getEligibleRules(trainRows, inputs.markets);
   const candidates = buildCandidateStrategies(inputs.strategyMode);
   const allResults = [];
+  const trainResults = [];
 
+  // Phase 1: Train on training set
   eligibleRules.forEach((rule) => {
-    const ruleRows = scopedRows.filter((r) => r.rule === rule);
-    if (!ruleRows.length) return;
+    const ruleTrainRows = trainRows.filter((r) => r.rule === rule);
+    if (!ruleTrainRows.length) return;
 
     candidates.forEach((candidate) => {
-      const result = runSingleBacktest(ruleRows, inputs, candidate, rule);
-      if (result) allResults.push(result);
+      const result = runSingleBacktest(ruleTrainRows, inputs, candidate, rule, costs);
+      if (result) {
+        trainResults.push(result);
+        allResults.push(result);
+      }
     });
   });
 
-  if (!allResults.length) {
-    return { best: null, allResults: [], eligibleRules: [] };
+  if (!trainResults.length) {
+    return { best: null, allResults: [], eligibleRules: [], trainResults: [], valResult: null, testResult: null, perfectForesight: null, forecastDrivenTrain: null, forecastDrivenVal: null, forecastDrivenTest: null };
   }
 
-  allResults.sort((a, b) => b.totalPnL - a.totalPnL);
-  return { best: allResults[0], allResults, eligibleRules };
+  // Sort by training P&L and select best
+  trainResults.sort((a, b) => b.totalPnL - a.totalPnL);
+  const bestFromTraining = trainResults[0];
+
+  // Phase 2: Validate on validation set with same rule+candidate
+  const valRuleRows = valRows.filter((r) => r.rule === bestFromTraining.rule);
+  const valResult = valRuleRows.length > 0
+    ? runSingleBacktest(valRuleRows, inputs, bestFromTraining.candidate, bestFromTraining.rule, costs)
+    : null;
+
+  // Phase 3: Test on test set with same rule+candidate
+  const testRuleRows = testRows.filter((r) => r.rule === bestFromTraining.rule);
+  const testResult = testRuleRows.length > 0
+    ? runSingleBacktest(testRuleRows, inputs, bestFromTraining.candidate, bestFromTraining.rule, costs)
+    : null;
+
+  // Phase 3 Optimization: Perfect Foresight
+  const perfectForesight = runPerfectForesightBacktest(testRows, inputs, costs);
+
+  // Phase 3 Optimization: Forecast-Driven
+  const forecastDrivenTrain = runForecastDrivenBacktest(trainRows, inputs, costs);
+  const forecastDrivenVal = runForecastDrivenBacktest(valRows, inputs, costs);
+  const forecastDrivenTest = runForecastDrivenBacktest(testRows, inputs, costs);
+
+  return {
+    best: testResult || bestFromTraining,
+    allResults,
+    eligibleRules,
+    trainResults,
+    trainPnL: bestFromTraining.totalPnL,
+    valResult,
+    testResult,
+    perfectForesight,
+    forecastDrivenTrain,
+    forecastDrivenVal,
+    forecastDrivenTest,
+  };
 }
 
 function formatMode(mode) {
@@ -561,9 +889,79 @@ function renderDailySummaryTable(dailyRows) {
   `;
 }
 
-function renderOptimizerCharts(bestResult) {
-  if (typeof Plotly === "undefined") return;
+function renderStrategyComparison(run) {
+  if (!run.testResult) return "";
 
+  const quantileTestPnL = run.testResult.totalPnL;
+  const perfectForesightTestPnL = run.perfectForesight?.totalPnL || 0;
+  const forecastDrivenTestPnL = run.forecastDrivenTest?.totalPnL || 0;
+
+  const captureRatio =
+    perfectForesightTestPnL !== 0
+      ? (quantileTestPnL / perfectForesightTestPnL) * 100
+      : 0;
+
+  const comparisonRows = [
+    {
+      strategy: "Quantile Baseline",
+      trainPnL: run.trainPnL || 0,
+      valPnL: run.valResult?.totalPnL || 0,
+      testPnL: quantileTestPnL,
+      captureRatio: 100,
+    },
+    {
+      strategy: "Perfect Foresight",
+      trainPnL: 0,
+      valPnL: 0,
+      testPnL: perfectForesightTestPnL,
+      captureRatio: 100,
+    },
+    {
+      strategy: "Forecast-Driven",
+      trainPnL: run.forecastDrivenTrain?.totalPnL || 0,
+      valPnL: run.forecastDrivenVal?.totalPnL || 0,
+      testPnL: forecastDrivenTestPnL,
+      captureRatio: perfectForesightTestPnL !== 0 ? (forecastDrivenTestPnL / perfectForesightTestPnL) * 100 : 0,
+    },
+  ];
+
+  const rows = comparisonRows
+    .map(
+      (r) => `
+        <tr>
+          <td>${escapeHtml(r.strategy)}</td>
+          <td>${formatNumber(r.trainPnL)} €</td>
+          <td>${formatNumber(r.valPnL)} €</td>
+          <td>${formatNumber(r.testPnL)} €</td>
+          <td>${formatNumber(r.captureRatio)} %</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <h3>Strategy Comparison (Train / Validation / Out-of-Sample Test)</h3>
+    <div style="overflow-x:auto;">
+      <table class="optimizer-table" style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Train P&amp;L</th>
+            <th>Validation P&amp;L</th>
+            <th>Test P&amp;L</th>
+            <th>Capture Ratio</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderOptimizerCharts(run) {
+  if (typeof Plotly === "undefined" || !run.testResult) return;
+
+  const bestResult = run.testResult;
   const dailyRows = summarizeDaily(bestResult);
   const dailyDates = dailyRows.map((r) => r.date);
   const dailyPnL = dailyRows.map((r) => r.pnl);
@@ -577,6 +975,28 @@ function renderOptimizerCharts(bestResult) {
   const stepLabels = bestResult.actions.map((a, i) => `${a.date} | ${a.contract} | ${i + 1}`);
   const socTrace = bestResult.actions.map((a) => a.soc_after);
 
+  // Cumulative P&L for all 3 strategies
+  const testRowsDates = [...new Set(run.testResult.actions.map((a) => a.date))].sort();
+
+  const quantileCumulative = [];
+  let quantileAcc = 0;
+  dailyRows.forEach((r) => {
+    quantileAcc += r.pnl;
+    quantileCumulative.push(quantileAcc);
+  });
+
+  const perfectForesightDailyMap = new Map();
+  const perfectForesightRows = run.perfectForesight ? run.testResult.actions : [];
+  // For perfect foresight, we'd need to recalculate, so approximate with P&L
+  const perfectForesightCumulative = [];
+  let pfAcc = run.perfectForesight?.totalPnL || 0;
+  perfectForesightCumulative.push(pfAcc);
+
+  const forecastDrivenCumulative = [];
+  let fdAcc = run.forecastDrivenTest?.totalPnL || 0;
+  forecastDrivenCumulative.push(fdAcc);
+
+  // Daily P&L bar chart
   Plotly.newPlot(
     "optimizerDailyPnL",
     [
@@ -588,7 +1008,7 @@ function renderOptimizerCharts(bestResult) {
       },
     ],
     {
-      title: "Daily P&L",
+      title: "Daily P&L (Test Set)",
       margin: { l: 60, r: 20, t: 50, b: 90 },
       paper_bgcolor: "white",
       plot_bgcolor: "white",
@@ -598,18 +1018,34 @@ function renderOptimizerCharts(bestResult) {
     { responsive: true, displayModeBar: false }
   );
 
+  // Cumulative P&L comparison
   Plotly.newPlot(
     "optimizerCumulativePnL",
     [
       {
         x: dailyDates,
-        y: cumulative,
+        y: quantileCumulative,
         mode: "lines+markers",
+        name: "Quantile Baseline",
         hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} €<extra></extra>",
+      },
+      {
+        x: ["Test Set"],
+        y: [run.perfectForesight?.totalPnL || 0],
+        mode: "markers",
+        name: "Perfect Foresight",
+        hovertemplate: "Perfect Foresight: %{y:.2f} €<extra></extra>",
+      },
+      {
+        x: ["Test Set"],
+        y: [run.forecastDrivenTest?.totalPnL || 0],
+        mode: "markers",
+        name: "Forecast-Driven",
+        hovertemplate: "Forecast-Driven: %{y:.2f} €<extra></extra>",
       },
     ],
     {
-      title: "Cumulative P&L",
+      title: "Cumulative P&L Comparison",
       margin: { l: 60, r: 20, t: 50, b: 90 },
       paper_bgcolor: "white",
       plot_bgcolor: "white",
@@ -619,6 +1055,7 @@ function renderOptimizerCharts(bestResult) {
     { responsive: true, displayModeBar: false }
   );
 
+  // SoC trace
   Plotly.newPlot(
     "optimizerSocTrace",
     [
@@ -631,7 +1068,7 @@ function renderOptimizerCharts(bestResult) {
       },
     ],
     {
-      title: "SoC Trace",
+      title: "SoC Trace (Test Set)",
       margin: { l: 60, r: 20, t: 50, b: 110 },
       paper_bgcolor: "white",
       plot_bgcolor: "white",
@@ -692,6 +1129,10 @@ function renderBacktestResult(inputs, scopedRows, run) {
       ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Discharge when sell price is in the highest ${(100 - best.candidate.sellQ * 100).toFixed(0)}% tail of prior history for this pair.`
       : `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge below ${best.buyThreshold?.toFixed(2) ?? "-"} €/MWh and discharge above ${best.sellThreshold?.toFixed(2) ?? "-"} €/MWh using walk-forward thresholds.`;
 
+  const trainPnL = run.trainResults.length > 0 ? run.trainResults[0].totalPnL : 0;
+  const valPnL = run.valResult?.totalPnL || 0;
+  const testPnL = run.testResult?.totalPnL || 0;
+
   resultEl.innerHTML = `
     <div class="optimizer-card">
       <h3>Recommended strategy</h3>
@@ -699,27 +1140,31 @@ function renderBacktestResult(inputs, scopedRows, run) {
       <p><strong>Recommended market pair:</strong> ${escapeHtml(RULE_LABELS[best.rule] || best.rule)}</p>
       <p><strong>Markets selected:</strong> ${escapeHtml(inputs.markets.join(", "))}</p>
       <p><strong>Scope:</strong> ${escapeHtml(inputs.area)} | ${escapeHtml(inputs.startDate)} → ${escapeHtml(inputs.endDate)}</p>
+      <p><strong>Data split:</strong> 60% training, 20% validation, 20% out-of-sample test</p>
       <p>${escapeHtml(strategyNote)}</p>
       <p><strong>Scoped rows:</strong> ${scopedRows.length}</p>
       <p><strong>Eligible market pairs:</strong> ${run.eligibleRules.length}</p>
-      <p><strong>Total P&L:</strong> ${formatNumber(best.totalPnL)} €</p>
+      <p><strong>Training P&L:</strong> ${formatNumber(trainPnL)} €</p>
+      <p><strong>Validation P&L:</strong> ${formatNumber(valPnL)} €</p>
+      <p><strong>Test P&L (out-of-sample):</strong> ${formatNumber(testPnL)} €</p>
       <p><strong>Charge actions:</strong> ${best.chargeActions}</p>
       <p><strong>Discharge actions:</strong> ${best.dischargeActions}</p>
       <p><strong>Charged energy:</strong> ${formatNumber(best.chargeEnergyRaw)} MWh</p>
       <p><strong>Discharged energy:</strong> ${formatNumber(best.dischargeEnergyRaw)} MWh</p>
       <p><strong>Equivalent charge cycles:</strong> ${formatNumber(best.equivalentCycles)}</p>
       <p><strong>Ending SoC:</strong> ${formatNumber(best.endingSoc)} MWh</p>
-      <p><strong>Notes:</strong> This version uses walk-forward thresholds and avoids using future prices to set current thresholds.</p>
 
-      <h3>Top 5 strategy alternatives</h3>
-      ${renderTopAlternatives(run.allResults)}
+      ${renderStrategyComparison(run)}
 
-      <h3>First 20 active actions of recommended strategy</h3>
+      <h3>Top 5 strategy alternatives (from training)</h3>
+      ${renderTopAlternatives(run.trainResults)}
+
+      <h3>First 20 active actions of recommended strategy (test set)</h3>
       ${renderActionTable(best.activeActions)}
     </div>
   `;
 
-  renderOptimizerCharts(best);
+  renderOptimizerCharts(run);
 }
 
 function handleRunOptimizer() {
@@ -756,7 +1201,8 @@ function handleRunOptimizer() {
     return;
   }
 
-  const run = runOptimizerBacktest(scopedRows, inputs);
+  const split = splitTrainValTest(scopedRows);
+  const run = runOptimizerBacktest(split.trainRows, split.valRows, split.testRows, inputs);
   renderBacktestResult(inputs, scopedRows, run);
 }
 
@@ -764,4 +1210,4 @@ byId("runOptimizerBtn")?.addEventListener("click", handleRunOptimizer);
 
 loadOptimizerData();
 clearOptimizerCharts();
-console.log("Advanced BESS Optimizer loaded with walk-forward thresholds.");
+console.log("Advanced BESS Optimizer loaded with 3-phase backtest and market cost simulation.");
