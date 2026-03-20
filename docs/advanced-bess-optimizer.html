@@ -1444,7 +1444,7 @@ async function runAll() {
     document.getElementById('dispDayEnd').max = nTestDays;
     document.getElementById('dispDayEnd').value = Math.min(14, nTestDays);
     renderDispatchChart();
-    renderBidSuggestor(testData, qResult, fResult, fcResult, mp, windows);
+    renderBidSuggestor(testData, qResult, fResult, fcResult, mp, qResult ? qResult.windows : null);
 
     setProgress(100, 'Done ✓');
     setTimeout(() => {
