@@ -1,16 +1,16 @@
-let optimizerData = []; // fix
+let optimizerData = [];
 
 const RULE_LABELS = {
-  DA_IDA1: "Day Ahead â IDA1",
-  DA_IDA2: "Day Ahead â IDA2",
-  DA_IDA3: "Day Ahead â IDA3",
-  DA_VWAP: "Day Ahead â Intraday VWAP",
-  IDA1_IDA2: "IDA1 â IDA2",
-  IDA1_IDA3: "IDA1 â IDA3",
-  IDA1_VWAP: "IDA1 â Intraday VWAP",
-  IDA2_IDA3: "IDA2 â IDA3",
-  IDA2_VWAP: "IDA2 â Intraday VWAP",
-  IDA3_VWAP: "IDA3 â Intraday VWAP",
+  DA_IDA1: "Day Ahead ↔ IDA1",
+  DA_IDA2: "Day Ahead ↔ IDA2",
+  DA_IDA3: "Day Ahead ↔ IDA3",
+  DA_VWAP: "Day Ahead ↔ Intraday VWAP",
+  IDA1_IDA2: "IDA1 ↔ IDA2",
+  IDA1_IDA3: "IDA1 ↔ IDA3",
+  IDA1_VWAP: "IDA1 ↔ Intraday VWAP",
+  IDA2_IDA3: "IDA2 ↔ IDA3",
+  IDA2_VWAP: "IDA2 ↔ Intraday VWAP",
+  IDA3_VWAP: "IDA3 ↔ Intraday VWAP",
 };
 
 function byId(id) {
@@ -89,7 +89,7 @@ function buildDatasetSummary() {
       Rows: ${optimizerData.length}<br />
       Areas: ${escapeHtml(areas.join(", ") || "-")}<br />
       Historical market pairs: ${rules.length}<br />
-      Date range: ${escapeHtml(dates[0] || "-")} â ${escapeHtml(dates[dates.length - 1] || "-")}
+      Date range: ${escapeHtml(dates[0] || "-")} → ${escapeHtml(dates[dates.length - 1] || "-")}
     </div>
   `;
 }
@@ -147,7 +147,7 @@ function validateInputs(inputs) {
   if (!optimizerData.length) return "No historical dataset is loaded.";
   if (inputs.powerMw <= 0) return "BESS MW must be greater than 0.";
   if (inputs.capacityMWh <= 0) return "BESS MWh must be greater than 0.";
-  if (inputs.efficiency <= 0 || inputs.efficiency > 1) return "Î· must be between 0 and 1.";
+  if (inputs.efficiency <= 0 || inputs.efficiency > 1) return "η must be between 0 and 1.";
   if (inputs.minSoc < 0 || inputs.minSoc > 100) return "Min SoC must be between 0 and 100.";
   if (inputs.maxSoc < 0 || inputs.maxSoc > 100) return "Max SoC must be between 0 and 100.";
   if (inputs.minSoc >= inputs.maxSoc) return "Min SoC must be lower than Max SoC.";
@@ -206,11 +206,11 @@ function parseContractHours(contractLabel) {
 /**
  * Real Nord Pool / EPEX gate closure rules (factual market constraints):
  *
- *  DA Auction    â D-1 at 12:00 CET â covers all 24 delivery hours for day D
- *  IDA1 Auction  â D-1 at 15:00 CET â covers all 24 delivery hours for day D
- *  IDA2 Auction  â D-1 at 22:00 CET â covers all 24 delivery hours for day D
- *  IDA3 Auction  â D    at 10:00 CET â covers ONLY delivery hours 12:00â24:00 (hours â¥ 12)
- *  Continuous    â 5 minutes before contract start (e.g. 11:55 for 12:00â12:15)
+ *  DA Auction    – D-1 at 12:00 CET → covers all 24 delivery hours for day D
+ *  IDA1 Auction  – D-1 at 15:00 CET → covers all 24 delivery hours for day D
+ *  IDA2 Auction  – D-1 at 22:00 CET → covers all 24 delivery hours for day D
+ *  IDA3 Auction  – D    at 10:00 CET → covers ONLY delivery hours 12:00–24:00 (hours ≥ 12)
+ *  Continuous    – 5 minutes before contract start (e.g. 11:55 for 12:00–12:15)
  *
  * In backtesting all DA/IDA1/IDA2 prices are always accessible.
  * The one hard filter that removes real opportunities:
@@ -222,7 +222,7 @@ function isContractEligibleByMarketGate(row) {
   const rule = String(row.rule || "").toUpperCase();
   const contract = String(row.contract || "");
 
-  // IDA3 auction only covers delivery hours 12:00â24:00
+  // IDA3 auction only covers delivery hours 12:00–24:00
   if (rule.includes("IDA3")) {
     const startStr = contract.split("-")[0]; // e.g. "09:00"
     const startHour = parseInt((startStr || "0").split(":")[0], 10);
@@ -306,7 +306,7 @@ function runSingleBacktest(rows, inputs, candidate, rule, costs) {
       return;
     }
 
-    // Gate closure check 2: real Nord Pool market rules (IDA3 â¥ 12:00 only, etc.)
+    // Gate closure check 2: real Nord Pool market rules (IDA3 ≥ 12:00 only, etc.)
     if (!isContractEligibleByMarketGate(row)) {
       return;
     }
@@ -867,7 +867,7 @@ function renderActionTable(actions) {
             <th>Buy</th>
             <th>Sell</th>
             <th>Energy</th>
-            <th>P&amp;L Î</th>
+            <th>P&amp;L Δ</th>
             <th>SoC After</th>
           </tr>
         </thead>
@@ -892,7 +892,7 @@ function renderTopAlternatives(allResults) {
           <td>${escapeHtml(formatMode(r.candidate.mode))}</td>
           <td>${r.candidate.buyQ !== null ? `${(r.candidate.buyQ * 100).toFixed(0)}%` : "-"}</td>
           <td>${r.candidate.sellQ !== null ? `${(r.candidate.sellQ * 100).toFixed(0)}%` : "-"}</td>
-          <td>${formatNumber(r.totalPnL)} â¬</td>
+          <td>${formatNumber(r.totalPnL)} €</td>
         </tr>
       `
     )
@@ -1037,9 +1037,9 @@ function renderStrategyComparison(run) {
       (r) => `
         <tr>
           <td>${escapeHtml(r.strategy)}</td>
-          <td>${formatNumber(r.trainPnL)} â¬</td>
-          <td>${formatNumber(r.valPnL)} â¬</td>
-          <td>${formatNumber(r.testPnL)} â¬</td>
+          <td>${formatNumber(r.trainPnL)} €</td>
+          <td>${formatNumber(r.valPnL)} €</td>
+          <td>${formatNumber(r.testPnL)} €</td>
           <td>${formatNumber(r.captureRatio)} %</td>
         </tr>
       `
@@ -1098,7 +1098,7 @@ function renderOptimizerCharts(run) {
         x: dailyDates,
         y: dailyPnL,
         type: "bar",
-        hovertemplate: "Date: %{x}<br>Daily P&L: %{y:.2f} â¬<extra></extra>",
+        hovertemplate: "Date: %{x}<br>Daily P&L: %{y:.2f} €<extra></extra>",
       },
     ],
     {
@@ -1107,7 +1107,7 @@ function renderOptimizerCharts(run) {
       paper_bgcolor: "white",
       plot_bgcolor: "white",
       xaxis: { title: "Date", tickangle: -45, automargin: true },
-      yaxis: { title: "P&L (â¬)", gridcolor: "#eaecf0", automargin: true },
+      yaxis: { title: "P&L (€)", gridcolor: "#eaecf0", automargin: true },
     },
     { responsive: true, displayModeBar: false }
   );
@@ -1146,7 +1146,7 @@ function renderOptimizerCharts(run) {
       y: quantileCumulative,
       mode: "lines+markers",
       name: "Quantile Baseline",
-      hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} â¬<extra></extra>",
+      hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} €<extra></extra>",
     },
   ];
 
@@ -1156,7 +1156,7 @@ function renderOptimizerCharts(run) {
       y: pfCumulative,
       mode: "lines+markers",
       name: "Perfect Foresight",
-      hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} â¬<extra></extra>",
+      hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} €<extra></extra>",
     });
   }
 
@@ -1166,7 +1166,7 @@ function renderOptimizerCharts(run) {
       y: fdCumulative,
       mode: "lines+markers",
       name: "Forecast-Driven",
-      hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} â¬<extra></extra>",
+      hovertemplate: "Date: %{x}<br>Cumulative P&L: %{y:.2f} €<extra></extra>",
     });
   }
 
@@ -1179,7 +1179,7 @@ function renderOptimizerCharts(run) {
       paper_bgcolor: "white",
       plot_bgcolor: "white",
       xaxis: { title: "Date", tickangle: -45, automargin: true },
-      yaxis: { title: "Cumulative (â¬)", gridcolor: "#eaecf0", automargin: true },
+      yaxis: { title: "Cumulative (€)", gridcolor: "#eaecf0", automargin: true },
     },
     { responsive: true, displayModeBar: false }
   );
@@ -1247,7 +1247,7 @@ function renderOptimizerCharts(run) {
         mode: "lines",
         name: "Buy Prices",
         line: { color: "lightblue" },
-        hovertemplate: "Step %{x}<br>Buy: â¬%{y:.2f}<extra></extra>",
+        hovertemplate: "Step %{x}<br>Buy: €%{y:.2f}<extra></extra>",
       },
       {
         x: stepIndices,
@@ -1255,7 +1255,7 @@ function renderOptimizerCharts(run) {
         mode: "lines",
         name: "Sell Prices",
         line: { color: "orange" },
-        hovertemplate: "Step %{x}<br>Sell: â¬%{y:.2f}<extra></extra>",
+        hovertemplate: "Step %{x}<br>Sell: €%{y:.2f}<extra></extra>",
       },
     ];
 
@@ -1266,7 +1266,7 @@ function renderOptimizerCharts(run) {
         mode: "markers",
         name: "Charge",
         marker: { symbol: "triangle-up", color: "green", size: 10 },
-        hovertemplate: "Charge at â¬%{y:.2f}<extra></extra>",
+        hovertemplate: "Charge at €%{y:.2f}<extra></extra>",
       });
     }
 
@@ -1277,7 +1277,7 @@ function renderOptimizerCharts(run) {
         mode: "markers",
         name: "Discharge",
         marker: { symbol: "triangle-down", color: "red", size: 10 },
-        hovertemplate: "Discharge at â¬%{y:.2f}<extra></extra>",
+        hovertemplate: "Discharge at €%{y:.2f}<extra></extra>",
       });
     }
 
@@ -1292,7 +1292,7 @@ function renderOptimizerCharts(run) {
           paper_bgcolor: "white",
           plot_bgcolor: "white",
           xaxis: { title: "Step", showticklabels: false, automargin: true },
-          yaxis: { title: "Price (â¬/MWh)", gridcolor: "#eaecf0", automargin: true },
+          yaxis: { title: "Price (€/MWh)", gridcolor: "#eaecf0", automargin: true },
         },
         { responsive: true, displayModeBar: false }
       );
@@ -1344,13 +1344,13 @@ function renderOptimizerCharts(run) {
       "optimizerStrategyBars",
       strategyBarTraces,
       {
-        title: "Strategy P&L by Phase (â¬)",
+        title: "Strategy P&L by Phase (€)",
         barmode: "group",
         margin: { l: 60, r: 20, t: 50, b: 90 },
         paper_bgcolor: "white",
         plot_bgcolor: "white",
         xaxis: { title: "Strategy" },
-        yaxis: { title: "P&L (â¬)", gridcolor: "#eaecf0" },
+        yaxis: { title: "P&L (€)", gridcolor: "#eaecf0" },
       },
       { responsive: true, displayModeBar: false }
     );
@@ -1447,7 +1447,7 @@ function renderBacktestResult(inputs, scopedRows, run) {
       ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge when buy price is in the lowest ${(best.candidate.buyQ * 100).toFixed(0)}% of prior history for this pair.`
       : inputs.strategyMode === "discharge_only"
       ? `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Discharge when sell price is in the highest ${(100 - best.candidate.sellQ * 100).toFixed(0)}% tail of prior history for this pair.`
-      : `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge below ${best.buyThreshold?.toFixed(2) ?? "-"} â¬/MWh and discharge above ${best.sellThreshold?.toFixed(2) ?? "-"} â¬/MWh using walk-forward thresholds.`;
+      : `Best pair: ${RULE_LABELS[best.rule] || best.rule}. Charge below ${best.buyThreshold?.toFixed(2) ?? "-"} €/MWh and discharge above ${best.sellThreshold?.toFixed(2) ?? "-"} €/MWh using walk-forward thresholds.`;
 
   const trainPnL = run.trainResults.length > 0 ? run.trainResults[0].totalPnL : 0;
   const valPnL = run.valResult?.totalPnL || 0;
@@ -1459,14 +1459,14 @@ function renderBacktestResult(inputs, scopedRows, run) {
       <p><strong>Mode:</strong> ${escapeHtml(formatMode(inputs.strategyMode))}</p>
       <p><strong>Recommended market pair:</strong> ${escapeHtml(RULE_LABELS[best.rule] || best.rule)}</p>
       <p><strong>Markets selected:</strong> ${escapeHtml(inputs.markets.join(", "))}</p>
-      <p><strong>Scope:</strong> ${escapeHtml(inputs.area)} | ${escapeHtml(inputs.startDate)} â ${escapeHtml(inputs.endDate)}</p>
+      <p><strong>Scope:</strong> ${escapeHtml(inputs.area)} | ${escapeHtml(inputs.startDate)} → ${escapeHtml(inputs.endDate)}</p>
       <p><strong>Data split:</strong> 60% training, 20% validation, 20% out-of-sample test</p>
       <p>${escapeHtml(strategyNote)}</p>
       <p><strong>Scoped rows:</strong> ${scopedRows.length}</p>
       <p><strong>Eligible market pairs:</strong> ${run.eligibleRules.length}</p>
-      <p><strong>Training P&L:</strong> ${formatNumber(trainPnL)} â¬</p>
-      <p><strong>Validation P&L:</strong> ${formatNumber(valPnL)} â¬</p>
-      <p><strong>Test P&L (out-of-sample):</strong> ${formatNumber(testPnL)} â¬</p>
+      <p><strong>Training P&L:</strong> ${formatNumber(trainPnL)} €</p>
+      <p><strong>Validation P&L:</strong> ${formatNumber(valPnL)} €</p>
+      <p><strong>Test P&L (out-of-sample):</strong> ${formatNumber(testPnL)} €</p>
       <p><strong>Charge actions:</strong> ${best.chargeActions}</p>
       <p><strong>Discharge actions:</strong> ${best.dischargeActions}</p>
       <p><strong>Charged energy:</strong> ${formatNumber(best.chargeEnergyRaw)} MWh</p>
@@ -1530,4 +1530,4 @@ byId("runOptimizerBtn")?.addEventListener("click", handleRunOptimizer);
 
 loadOptimizerData();
 clearOptimizerCharts();
-console.log("Advanced BESS Optimizer v2 loaded â 3-phase backtest, realistic market costs, real Nord Pool gate closure rules (IDA3 â¥12:00), and enhanced charting.");
+console.log("Advanced BESS Optimizer v2 loaded — 3-phase backtest, realistic market costs, real Nord Pool gate closure rules (IDA3 ≥12:00), and enhanced charting.");
