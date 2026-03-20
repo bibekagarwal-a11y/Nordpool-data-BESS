@@ -1,4 +1,4 @@
-let optimizerData = [];
+let optimizerData = []; // fix
 
 const RULE_LABELS = {
   DA_IDA1: "Day Ahead â IDA1",
