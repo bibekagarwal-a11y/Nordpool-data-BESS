@@ -156,6 +156,10 @@
             <label class="form-label">Market Dataset</label>
             <select class="form-select" id="dataSource">
               <option value="repoDayAhead" selected>📡 Live Repo — Day-Ahead (real Nord Pool)</option>
+              <option value="repoIDA1">📡 Live Repo — IDA1 (Intraday Auction 1)</option>
+              <option value="repoIDA2">📡 Live Repo — IDA2 (Intraday Auction 2)</option>
+              <option value="repoIDA3">📡 Live Repo — IDA3 (Intraday Auction 3)</option>
+              <option value="repoCombined">📡 Live Repo — Combined DA + IDA (merged)</option>
               <option value="synth2yr">Synthetic Nord Pool (2 yr, 2022-2023)</option>
               <option value="synth1yr">Synthetic Nord Pool (1 yr)</option>
               <option value="upload">Upload CSV…</option>
@@ -1232,7 +1236,8 @@ function buildQGrid() {
 // Data source toggle
 document.getElementById('dataSource').addEventListener('change', function () {
   document.getElementById('uploadZone').classList.toggle('d-none', this.value !== 'upload');
-  document.getElementById('repoZone').classList.toggle('d-none', this.value !== 'repoDayAhead');
+  const isRepo = ['repoDayAhead','repoIDA1','repoIDA2','repoIDA3','repoCombined'].includes(this.value);
+  document.getElementById('repoZone').classList.toggle('d-none', !isRepo);
 });
 
 // Fetch + parse real Nord Pool day-ahead CSV from the repo
@@ -1271,6 +1276,89 @@ async function loadRepoData(area) {
   const last  = data[data.length - 1].ts.slice(0, 10);
   document.getElementById('repoStatus').textContent =
     `✒ ${data.length} hourly obs · ${nDays} days · ${first} → ${last}`;
+  if (nDays < 30) {
+    document.getElementById('repoStatus').textContent +=
+      ' ⚠️ Short dataset — consider lowering WF Window & Train %';
+  }
+  return data;
+}
+
+// Fetch + parse IDA (Intraday Auction) CSV from the repo
+async function loadRepoIDAData(area, auction) {
+  const fileMap = { IDA1: 'ida1_prices.csv', IDA2: 'ida2_prices.csv', IDA3: 'ida3_prices.csv' };
+  const file = fileMap[auction];
+  if (!file) throw new Error('Unknown auction: ' + auction);
+  const url = 'https://raw.githubusercontent.com/bibekagarwal-a11y/Nordpool-data-BESS/main/data/' + file;
+  document.getElementById('repoStatus').textContent = 'Fetching ' + auction + ' data…';
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Failed to fetch ' + auction + ' data: ' + resp.status);
+  const text = await resp.text();
+  const rows = text.trim().split('\n').filter(Boolean);
+  const filtered = rows.slice(1).filter(r => r.split(',')[2] === area);
+  if (!filtered.length) throw new Error('No ' + auction + ' data found for area: ' + area);
+  const hourMap = new Map();
+  for (const row of filtered) {
+    const parts = row.split(',');
+    const ts = parts[3];
+    const price = parseFloat(parts[7]);
+    if (!isFinite(price)) continue;
+    const hourKey = ts.slice(0, 13);
+    if (!hourMap.has(hourKey)) hourMap.set(hourKey, { sum: 0, count: 0, ts: hourKey + ':00:00Z' });
+    const h = hourMap.get(hourKey);
+    h.sum += price; h.count++;
+  }
+  const sorted = [...hourMap.values()].sort((a, b) => a.ts < b.ts ? -1 : 1);
+  const data = sorted.map((h, i) => ({
+    ts: h.ts,
+    price: h.sum / h.count,
+    hour: new Date(h.ts).getUTCHours(),
+    dayIdx: Math.floor(i / 24)
+  }));
+  const nDays = Math.ceil(data.length / 24);
+  const first = data[0].ts.slice(0, 10);
+  const last  = data[data.length - 1].ts.slice(0, 10);
+  document.getElementById('repoStatus').textContent =
+    '✒ ' + auction + ': ' + data.length + ' hourly obs · ' + nDays + ' days · ' + first + ' → ' + last;
+  if (nDays < 30) {
+    document.getElementById('repoStatus').textContent +=
+      ' ⚠️ Short dataset — consider lowering WF Window & Train %';
+  }
+  return data;
+}
+
+// Fetch DA + all IDA and merge: for each hour, take the average across all available markets
+async function loadRepoCombinedData(area) {
+  document.getElementById('repoStatus').textContent = 'Fetching DA + IDA1 + IDA2 + IDA3…';
+  const [da, ida1, ida2, ida3] = await Promise.all([
+    loadRepoData(area),
+    loadRepoIDAData(area, 'IDA1').catch(() => []),
+    loadRepoIDAData(area, 'IDA2').catch(() => []),
+    loadRepoIDAData(area, 'IDA3').catch(() => [])
+  ]);
+  // Merge: index by timestamp, average prices across markets
+  const tsMap = new Map();
+  for (const d of da) {
+    if (!tsMap.has(d.ts)) tsMap.set(d.ts, { prices: [], hour: d.hour });
+    tsMap.get(d.ts).prices.push(d.price);
+  }
+  for (const src of [ida1, ida2, ida3]) {
+    for (const d of src) {
+      if (!tsMap.has(d.ts)) tsMap.set(d.ts, { prices: [], hour: d.hour });
+      tsMap.get(d.ts).prices.push(d.price);
+    }
+  }
+  const sorted = [...tsMap.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
+  const data = sorted.map(([ts, v], i) => ({
+    ts,
+    price: v.prices.reduce((a, b) => a + b, 0) / v.prices.length,
+    hour: v.hour,
+    dayIdx: Math.floor(i / 24)
+  }));
+  const nDays = Math.ceil(data.length / 24);
+  const first = data[0].ts.slice(0, 10);
+  const last  = data[data.length - 1].ts.slice(0, 10);
+  document.getElementById('repoStatus').textContent =
+    '✒ Combined: ' + data.length + ' hourly obs · ' + nDays + ' days · ' + first + ' → ' + last;
   if (nDays < 30) {
     document.getElementById('repoStatus').textContent +=
       ' ⚠️ Short dataset — consider lowering WF Window & Train %';
@@ -1334,6 +1422,13 @@ async function runAll() {
     if (src === 'repoDayAhead') {
       const area = document.getElementById('repoArea').value;
       allData = await loadRepoData(area);
+    } else if (src === 'repoIDA1' || src === 'repoIDA2' || src === 'repoIDA3') {
+      const area = document.getElementById('repoArea').value;
+      const auction = src.replace('repo', '');
+      allData = await loadRepoIDAData(area, auction);
+    } else if (src === 'repoCombined') {
+      const area = document.getElementById('repoArea').value;
+      allData = await loadRepoCombinedData(area);
     } else if (src === 'upload' && window._customData) {
       allData = window._customData;
     } else if (src === 'synth1yr') {
