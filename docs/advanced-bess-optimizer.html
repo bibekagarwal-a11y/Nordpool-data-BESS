@@ -134,11 +134,9 @@
 
 <!-- ── Navbar ─────────────────────────────────────────────────────────── -->
 <nav class="navbar d-flex align-items-center gap-3">
-  <span class="navbar-brand">⚡ BESS Optimizer</span>
-  <span class="phase-badge ph1">Phase 1: Honest Backtest</span>
-  <span class="phase-badge ph2">Phase 2: Realistic Market Sim</span>
-  <span class="phase-badge ph3">Phase 3: Three-Strategy Compare</span>
-  <span class="ms-auto text-muted" style="font-size:.t5rem">Nord Pool / EPEX DA Simulation</span>
+  <a href="https://bibekagarwal-a11y.github.io/Nordpool-data-BESS/" class="navbar-brand" style="text-decoration:none">⚡ BESS Optimizer</a>
+  <span style="color:var(--muted);font-size:.82rem">Report by Bibek Agarwal</span>
+  <a href="https://bibekagarwal-a11y.github.io/Nordpool-data-BESS/" style="margin-left:auto;font-size:.78rem;color:var(--accent);text-decoration:none">← Back to Dashboard</a>
 </nav>
 
 <!-- ── Main grid ──────────────────────────────────────────────────────── -->
@@ -504,8 +502,30 @@
 
             <!-- Bid Suggestor -->
             <div class="tab-pane fade" id="tab-bid-suggest">
+              <div class="d-flex align-items-center gap-3 mb-3 mt-2" style="flex-wrap:wrap">
+                <label style="font-size:.8rem;color:var(--muted);white-space:nowrap">Bidding Zone:</label>
+                <select class="form-select form-select-sm" id="bidAreaFilter" style="width:auto;min-width:180px">
+                  <option value="GER">GER (Germany)</option>
+                  <option value="AT">AT (Austria)</option>
+                  <option value="FR">FR (France)</option>
+                  <option value="BE">BE (Belgium)</option>
+                  <option value="NL">NL (Netherlands)</option>
+                </select>
+                <label style="font-size:.8rem;color:var(--muted);white-space:nowrap">Market:</label>
+                <select class="form-select form-select-sm" id="bidMarketFilter" style="width:auto;min-width:200px">
+                  <option value="repoDayAhead">Day-Ahead</option>
+                  <option value="repoIDA1">IDA1</option>
+                  <option value="repoIDA2">IDA2</option>
+                  <option value="repoIDA3">IDA3</option>
+                  <option value="repoCombined">Combined DA+IDA</option>
+                </select>
+                <button class="btn btn-sm" id="bidRefreshBtn" style="background:var(--accent);color:#fff;font-size:.78rem;padding:.25rem .75rem;border-radius:4px" disabled>
+                  Refresh Suggestions
+                </button>
+                <span id="bidAreaStatus" style="font-size:.74rem;color:var(--muted)"></span>
+              </div>
               <div id="bidSuggestorContent" style="font-size:.82rem">
-                <p class="text-muted">Run a backtest to generate bid suggestions.</p>
+                <p class="text-muted">Run a backtest to generate bid suggestions, then use the area/market filters above to compare strategies across zones.</p>
               </div>
             </div>
 
@@ -1541,6 +1561,13 @@ async function runAll() {
     document.getElementById('dispDayEnd').value = Math.min(14, nTestDays);
     renderDispatchChart();
     renderBidSuggestor(testData, qResult, fResult, fcResult, mp, qResult ? qResult.windows : null);
+    storeBidParams(testData, qResult, fResult, fcResult, mp, qResult ? qResult.windows : null);
+    // Sync bid area filter with main area selector
+    const bidAreaEl = document.getElementById('bidAreaFilter');
+    const bidMktEl = document.getElementById('bidMarketFilter');
+    if (bidAreaEl) bidAreaEl.value = document.getElementById('repoArea').value;
+    if (bidMktEl) bidMktEl.value = document.getElementById('dataSource').value;
+    document.getElementById('bidRefreshBtn').disabled = false;
 
     setProgress(100, 'Done ✓');
     setTimeout(() => {
@@ -1666,6 +1693,107 @@ function renderBidSuggestor(testData, qResult, fResult, fcResult, mp, windows) {
     + '<li><strong>Continuous</strong> — Use hourly action plan for optimal trading windows. Place limit orders at threshold levels.</li>'
     + '</ol></div>';
 }
+
+// ── Bid Suggestor: area-specific recompute ──
+// Store last run params for per-area recompute
+window._lastBidParams = null;
+
+function storeBidParams(testData, qResult, fResult, fcResult, mp, windows) {
+  window._lastBidParams = { testData, qResult, fResult, fcResult, mp, windows };
+}
+
+async function refreshBidForArea() {
+  const btn = document.getElementById('bidRefreshBtn');
+  const status = document.getElementById('bidAreaStatus');
+  const area = document.getElementById('bidAreaFilter').value;
+  const market = document.getElementById('bidMarketFilter').value;
+
+  if (!window._lastBidParams) {
+    status.textContent = 'Run a backtest first!';
+    return;
+  }
+
+  btn.disabled = true;
+  status.textContent = 'Loading ' + area + ' data…';
+
+  try {
+    // Load price data for selected area + market
+    let areaData;
+    if (market === 'repoDayAhead') {
+      areaData = await loadRepoData(area);
+    } else if (market === 'repoIDA1' || market === 'repoIDA2' || market === 'repoIDA3') {
+      const auction = market.replace('repo', '');
+      areaData = await loadRepoIDAData(area, auction);
+    } else if (market === 'repoCombined') {
+      areaData = await loadRepoCombinedData(area);
+    }
+
+    if (!areaData || !areaData.length) {
+      status.textContent = 'No data found for ' + area;
+      btn.disabled = false;
+      return;
+    }
+
+    status.textContent = 'Computing strategy for ' + area + '…';
+    await sleep(0);
+
+    const mp = window._lastBidParams.mp;
+    const origWindows = window._lastBidParams.windows;
+
+    // Use same train/val/test split ratios
+    const tf = parseInt(document.getElementById('trainFrac').value) || 60;
+    const vf = parseInt(document.getElementById('valFrac').value) || 20;
+    const nTrain = Math.floor(areaData.length * tf / 100);
+    const nVal   = Math.floor(areaData.length * vf / 100);
+    const testStart = nTrain + nVal;
+    const testSlice = areaData.slice(testStart);
+
+    if (testSlice.length < 24) {
+      status.textContent = 'Not enough test data for ' + area;
+      btn.disabled = false;
+      return;
+    }
+
+    // Compute optimal quantile thresholds on training data for THIS area
+    const trainSlice = areaData.slice(0, nTrain);
+    const { bGrid, sGrid } = buildQGrid();
+    const bestQ = optimiseQuantile(trainSlice, mp, bGrid, sGrid);
+
+    // Run quantile dispatch on the test set with area-specific thresholds
+    const testPrices = testSlice.map(d => d.price);
+    const buyTh = quantile(testPrices, bestQ.buyQ);
+    const sellTh = quantile(testPrices, bestQ.sellQ);
+    const dispatch = quantileDispatch(testSlice, { buyThreshold: buyTh, sellThreshold: sellTh }, mp);
+    const simQ = simulateDispatch(testSlice, dispatch, mp);
+
+    // Build foresight for capture ratio
+    status.textContent = 'Running foresight for ' + area + '…';
+    await sleep(0);
+    const fResult = await runForesightBacktest(testSlice, { ...mp }, () => {});
+
+    const areaQResult = {
+      dispatch,
+      pnlSeries: simQ.pnlSeries,
+      throughput: simQ.throughput,
+      windows: [{ buyQ: bestQ.buyQ, sellQ: bestQ.sellQ }]
+    };
+
+    renderBidSuggestor(testSlice, areaQResult, fResult, null, mp, areaQResult.windows);
+    status.textContent = '✓ ' + area + ' · ' + market.replace('repo','') + ' · ' + testSlice.length + ' test hrs · Q' + bestQ.buyQ + '/Q' + bestQ.sellQ;
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+  btn.disabled = false;
+}
+
+// Wire up the refresh button and filters
+document.getElementById('bidRefreshBtn').addEventListener('click', refreshBidForArea);
+document.getElementById('bidAreaFilter').addEventListener('change', function() {
+  document.getElementById('bidRefreshBtn').disabled = false;
+});
+document.getElementById('bidMarketFilter').addEventListener('change', function() {
+  document.getElementById('bidRefreshBtn').disabled = false;
+});
 
 // Init split bar
 updateSplitBar();
