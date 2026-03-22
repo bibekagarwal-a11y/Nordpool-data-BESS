@@ -10,7 +10,7 @@
     :root {
       --bg-primary: #0d1117;
       --bg-card: #161b27;
-      --bg-card2: #1c2336;
+      --bg-card2: #1c2336;h
       --border: #2d3554;
       --accent: #4f8ef7;
       --train: #22c55e;
@@ -1262,7 +1262,7 @@ document.getElementById('dataSource').addEventListener('change', function () {
 
 // Fetch + parse real Nord Pool day-ahead CSV from the repo
 async function loadRepoData(area) {
-  const url = 'https://raw.githubusercontent.com/bibekagarwal-a11y/Nordpool-data-BESS/main/data/dayahead_prices.csv';
+  const url = './data/dayahead_prices.csv';
   document.getElementById('repoStatus').textContent = 'Fetching data…';
   const resp = await fetch(url);
   if (!resp.ok) throw new Error('Failed to fetch repo data: ' + resp.status);
@@ -1308,7 +1308,7 @@ async function loadRepoIDAData(area, auction) {
   const fileMap = { IDA1: 'ida1_prices.csv', IDA2: 'ida2_prices.csv', IDA3: 'ida3_prices.csv' };
   const file = fileMap[auction];
   if (!file) throw new Error('Unknown auction: ' + auction);
-  const url = 'https://raw.githubusercontent.com/bibekagarwal-a11y/Nordpool-data-BESS/main/data/' + file;
+  const url = './data/' + file;
   document.getElementById('repoStatus').textContent = 'Fetching ' + auction + ' data…';
   const resp = await fetch(url);
   if (!resp.ok) throw new Error('Failed to fetch ' + auction + ' data: ' + resp.status);
