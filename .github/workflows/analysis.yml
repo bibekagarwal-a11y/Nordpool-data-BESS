@@ -97,7 +97,7 @@ jobs:
           else
             echo "Committing changes..."
             git add docs/data/ build/
-            git commit -m "Update analysis outputs [skip ci]"
+            git commit -m "Update analysis outputs"
             git push
             echo "Changes committed and pushed"
           fi
